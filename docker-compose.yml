@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: resham
+      POSTGRES_PASSWORD: resham
+      POSTGRES_DB: resham
+    ports:
+      - "5433:5432"
+    volumes:
+      - resham_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resham"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+  chroma:
+    image: chromadb/chroma:0.5.23
+    ports:
+      - "8001:8000"
+    volumes:
+      - resham_chroma_data:/chroma/chroma
+
+volumes:
+  resham_postgres_data:
+  resham_chroma_data:

@@ -1,0 +1,147 @@
+"""The eligibility gate: hard structured filters over Postgres.
+
+This is the correctness spine of the whole search — every product that
+survives here satisfies every hard constraint (department, kids/age,
+garment family, color, size, price, brand allow/exclude). Vector
+similarity (search/ranking.py) is only ever allowed to *order* this set,
+never to admit a product that doesn't belong in it.
+
+Color/size/price are checked at the variant level: a product is only
+eligible if at least one *available* variant simultaneously satisfies all
+three — the same coexistence rule as Dhaaga's `_matching_variants`.
+"""
+
+import re
+from dataclasses import dataclass, field
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from resham.db.models.brand import Brand
+from resham.db.models.product import Product as ProductRow
+from resham.db.models.product_variant import ProductVariant as VariantRow
+from resham.nlp.colors import colors_match
+from resham.nlp.garments import matches_garment_text
+
+SIZE_ALIASES = {
+    "EXTRASMALL": "XS",
+    "XSMALL": "XS",
+    "SMALL": "S",
+    "MEDIUM": "M",
+    "LARGE": "L",
+    "EXTRALARGE": "XL",
+    "XLARGE": "XL",
+    "XXLARGE": "XXL",
+    "2XL": "XXL",
+    "XXXLARGE": "XXXL",
+    "3XL": "XXXL",
+}
+
+
+def normalize_size(value: str) -> str:
+    compact = re.sub(r"[^A-Z0-9]+", "", value.upper())
+    return SIZE_ALIASES.get(compact, compact)
+
+
+@dataclass
+class EligibilityFilters:
+    """Hard constraints derived from the current turn's SessionState —
+    never relaxed (occasion is deliberately absent: it's a soft signal
+    handled by search/relax.py, matching Dhaaga's one exception)."""
+
+    department: str | None = None
+    wants_kids: bool = False
+    child_age_months: int | None = None
+    category: str | None = None
+    color: str | None = None
+    size: str | None = None
+    budget_min: float | None = None
+    budget_max: float | None = None
+    brands: list[str] = field(default_factory=list)  # allow-list of brand slugs
+    excluded_brands: list[str] = field(default_factory=list)
+
+
+def _product_matches_age(row: ProductRow, child_age_months: int) -> bool:
+    # `age_ranges_months` is already fully computed at ingestion time
+    # (catalog.mapper calls nlp.kids_age.extract_age_ranges), so — unlike
+    # Dhaaga's live-fetch fallback path — there is no lazy re-derivation
+    # from title/sizes/tags needed here.
+    return any(start <= child_age_months <= end for start, end in row.age_ranges_months)
+
+
+async def _variant_eligible_product_ids(
+    session: AsyncSession, product_ids: list[UUID], filters: EligibilityFilters
+) -> set[UUID]:
+    """Return the subset of product_ids with at least one available variant
+    that simultaneously satisfies color, size, and price."""
+    if not product_ids:
+        return set()
+
+    stmt = select(VariantRow).where(
+        VariantRow.product_id.in_(product_ids), VariantRow.available.is_(True)
+    )
+    variants = (await session.execute(stmt)).scalars().all()
+
+    requested_size = normalize_size(filters.size) if filters.size else None
+    matching_ids: set[UUID] = set()
+
+    for variant in variants:
+        if variant.product_id in matching_ids:
+            continue
+        if filters.budget_min is not None and float(variant.price) < filters.budget_min:
+            continue
+        if filters.budget_max is not None and float(variant.price) > filters.budget_max:
+            continue
+        if requested_size:
+            variant_size = normalize_size(variant.size) if variant.size else None
+            if variant_size != requested_size:
+                continue
+        if filters.color:
+            if not variant.color or not colors_match(filters.color, variant.color):
+                continue
+        matching_ids.add(variant.product_id)
+
+    return matching_ids
+
+
+async def eligible_products(
+    session: AsyncSession, filters: EligibilityFilters
+) -> list[ProductRow]:
+    """Return every product satisfying every hard constraint. This is the
+    bounded candidate set that search/ranking.py orders — it never grows
+    beyond what's genuinely eligible, regardless of ranking signal."""
+    stmt = select(ProductRow).where(
+        ProductRow.in_stock.is_(True),
+        ProductRow.removed_at.is_(None),
+        ProductRow.is_kids.is_(filters.wants_kids),
+    )
+
+    if filters.department:
+        stmt = stmt.where(ProductRow.department.in_([filters.department, "unisex"]))
+
+    if filters.brands or filters.excluded_brands:
+        stmt = stmt.join(Brand, Brand.id == ProductRow.brand_id)
+        if filters.brands:
+            stmt = stmt.where(Brand.slug.in_(filters.brands))
+        if filters.excluded_brands:
+            stmt = stmt.where(Brand.slug.notin_(filters.excluded_brands))
+
+    rows = list((await session.execute(stmt)).scalars().all())
+
+    if filters.wants_kids and filters.child_age_months is not None:
+        # Age is a hard safety/relevance constraint — never relaxed, and
+        # unknown age metadata is excluded rather than guessed.
+        rows = [r for r in rows if _product_matches_age(r, filters.child_age_months)]
+
+    if filters.category:
+        rows = [
+            r for r in rows
+            if matches_garment_text(f"{r.product_family or ''} {r.category or ''} {r.title}", filters.category)
+        ]
+
+    if filters.color or filters.size or filters.budget_min is not None or filters.budget_max is not None:
+        eligible_ids = await _variant_eligible_product_ids(session, [r.id for r in rows], filters)
+        rows = [r for r in rows if r.id in eligible_ids]
+
+    return rows
