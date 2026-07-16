@@ -5,7 +5,6 @@ from difflib import SequenceMatcher
 
 from resham.nlp.colors import extract_color
 
-
 _DESCRIPTOR_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("shalwar kameez", (r"\bshalwar\s+kameez(?:es)?\b", r"\bsalwar\s+kameez(?:es)?\b")),
     ("shirt dress", (r"\bshirt\s+dress(?:es)?\b",)),
@@ -233,6 +232,20 @@ def extract_garment_descriptors(text: str) -> list[str]:
         for descriptor in extract_search_descriptors(text)
         if descriptor not in _STYLE_DESCRIPTORS
     ]
+
+
+_UNSTITCHED_PATTERN = re.compile(r"\bunstitched\b")
+
+
+def unstitched_fallback_family(text: str) -> str | None:
+    """Last-resort signal only: "unstitched" reliably means loose fabric
+    for a shalwar-kameez/suit in this catalog, but titles routinely name a
+    single component alongside it too (e.g. "Khaddar Shirt (Unstitched)" is
+    genuinely shirt fabric, not a suit). Callers must only use this after
+    `extract_garment_descriptors` has already found nothing anywhere
+    (title, category, tags) — that ordering is what keeps a specific named
+    component from ever being shadowed by this catch-all."""
+    return "suit" if _UNSTITCHED_PATTERN.search(_normalized(text)) else None
 
 
 def extract_primary_garment(text: str) -> str | None:
