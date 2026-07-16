@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     gemini_rate_limit_cooldown_seconds: float = 300.0
     llm_first_intent_enabled: bool = True
 
+    # Image classification (resham.vision) — reuses the Gemini key above.
+    # Runs incrementally, capped per worker cycle, so cost trickles in over
+    # time rather than a one-time sweep of the whole catalog.
+    gemini_vision_model: str = "gemini-3.1-flash-lite"
+    gemini_vision_timeout_seconds: float = 8.0
+    vision_classification_batch_size: int = 50
+
     # Browser extension — all crawled brands are supported (not a single-store MVP)
     extension_allowed_origins: str = ""
     extension_request_timeout_seconds: float = 25.0

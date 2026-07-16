@@ -135,9 +135,15 @@ async def eligible_products(
         rows = [r for r in rows if _product_matches_age(r, filters.child_age_months)]
 
     if filters.category:
+        # vision_category (resham.vision) is appended, never substituted —
+        # it only ever adds a match for a product the text fields alone
+        # couldn't place, it can't cost an already-well-tagged product one.
         rows = [
             r for r in rows
-            if matches_garment_text(f"{r.product_family or ''} {r.category or ''} {r.title}", filters.category)
+            if matches_garment_text(
+                f"{r.product_family or ''} {r.category or ''} {r.title} {r.vision_category or ''}",
+                filters.category,
+            )
         ]
 
     if filters.color or filters.size or filters.budget_min is not None or filters.budget_max is not None:

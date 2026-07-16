@@ -40,10 +40,14 @@ async def test_run_cycle_crawls_then_indexes(monkeypatch):
         assert collection == "collection"
         return {"embedded": 4, "metadata_synced": 7}
 
+    async def fake_classify_incremental(session):
+        return {"classified": 2, "failed": 1}
+
     monkeypatch.setattr(main, "get_session_maker", lambda: _SessionMaker())
     monkeypatch.setattr(main, "crawl_all", fake_crawl_all)
     monkeypatch.setattr(main, "get_collection", lambda: "collection")
     monkeypatch.setattr(main, "index_incremental", fake_index_incremental)
+    monkeypatch.setattr(main, "classify_incremental", fake_classify_incremental)
 
     result = await main.run_cycle(trigger="manual", brand_slugs=["zellbury"])
 
@@ -52,6 +56,7 @@ async def test_run_cycle_crawls_then_indexes(monkeypatch):
         "trigger": "manual",
         "brands": ["zellbury"],
         "indexing": {"embedded": 4, "metadata_synced": 7},
+        "vision": {"classified": 2, "failed": 1},
     }
 
 

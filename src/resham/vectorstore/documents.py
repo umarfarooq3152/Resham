@@ -24,6 +24,14 @@ def build_document(row: ProductRow) -> tuple[str, dict[str, str | int | float | 
     enriched = enrich_product_semantics(pydantic_product)
     document_text = enriched.semantics.search_text if enriched.semantics else pydantic_product.name
 
+    # Image-derived category/color (resham.vision) supplements the text
+    # pipeline for a product whose title/description under-describe what's
+    # actually shown — appended, so a well-tagged product's embedding is
+    # unaffected and this is a no-op until the product is classified.
+    vision_terms = " ".join(filter(None, [row.vision_category, *row.vision_colors]))
+    if vision_terms:
+        document_text = f"{document_text} {vision_terms}"
+
     brand_slug = row.composite_key.split(":", 1)[0]
     metadata = {
         "brand_slug": brand_slug,

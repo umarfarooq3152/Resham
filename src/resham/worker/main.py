@@ -21,14 +21,21 @@ from resham.crawler.orchestrator import crawl_all
 from resham.db.connection import close_db, get_session_maker, init_db
 from resham.vectorstore.client import get_collection
 from resham.vectorstore.indexer import index_incremental
+from resham.vision.service import classify_incremental
 
 logger = logging.getLogger(__name__)
 
 
 async def run_cycle(*, trigger: str, brand_slugs: list[str] | None = None) -> dict[str, Any]:
-    """Run one full crawl followed by incremental vector indexing."""
+    """Run one full crawl, then image classification, then incremental
+    vector indexing — in that order, so a newly-crawled product's first
+    embedding already includes its vision-derived category/color instead
+    of needing a second cycle to pick them up."""
     session_maker = get_session_maker()
     crawl_run_id = await crawl_all(session_maker, trigger=trigger, brand_slugs=brand_slugs)
+
+    async with session_maker() as session:
+        vision_stats = await classify_incremental(session)
 
     async with session_maker() as session:
         index_stats = await index_incremental(session, get_collection())
@@ -38,6 +45,7 @@ async def run_cycle(*, trigger: str, brand_slugs: list[str] | None = None) -> di
         "trigger": trigger,
         "brands": brand_slugs or [],
         "indexing": index_stats,
+        "vision": vision_stats,
     }
     logger.info("Worker cycle complete: %s", result)
     return result

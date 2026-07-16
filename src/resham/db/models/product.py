@@ -76,6 +76,19 @@ class Product(Base):
     embedding_model_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     embedded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
+    # Image-derived classification (resham.vision) — a supplementary,
+    # non-authoritative signal that fills category/color gaps the text
+    # pipeline leaves behind on a sparsely-described product. Deliberately
+    # excludes is_kids/age: a photo cannot safely settle that hard
+    # constraint, so vision never writes to is_kids/age_ranges_months.
+    # NULL vision_classified_at means "not yet classified" (or a prior
+    # attempt failed) — resham.vision.service retries it on a later cycle.
+    vision_category: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    vision_colors: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    vision_classified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
