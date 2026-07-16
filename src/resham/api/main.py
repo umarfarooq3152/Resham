@@ -6,6 +6,7 @@ a slow or failing crawl can never block or crash request handling.
 """
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -59,6 +60,21 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
+
+    @app.middleware("http")
+    async def request_logging_middleware(request: Request, call_next):
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "%s %s -> %s (%d ms)",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        response.headers["X-Request-Duration-Ms"] = str(duration_ms)
+        return response
 
     @app.exception_handler(ReshamException)
     async def resham_exception_handler(request: Request, exc: ReshamException):
@@ -121,11 +137,25 @@ def create_app() -> FastAPI:
 
         return health_status
 
-    from resham.api.routers import extension, session, voice
+    from resham.api.routers import (
+        admin,
+        auth,
+        collections,
+        devices,
+        extension,
+        session,
+        voice,
+        wishlist,
+    )
 
     app.include_router(session.router)
     app.include_router(extension.router)
     app.include_router(voice.router)
+    app.include_router(devices.router)
+    app.include_router(auth.router)
+    app.include_router(wishlist.router)
+    app.include_router(collections.router)
+    app.include_router(admin.router)
 
     return app
 

@@ -219,6 +219,7 @@ def upgrade() -> None:
     # ### end Alembic commands ###
 
     _seed_brands()
+    _seed_collections()
 
 
 def _seed_brands() -> None:
@@ -241,6 +242,33 @@ def _seed_brands() -> None:
                 "slug": brand["slug"],
                 "domain": brand["domain"],
                 "department": brand["department"],
+            },
+        )
+
+
+def _seed_collections() -> None:
+    """Seed curated collection definitions (seed/collections.json)."""
+    seed_file = Path(__file__).parent.parent.parent / "seed" / "collections.json"
+    with open(seed_file) as f:
+        collections = json.load(f)
+
+    bind = op.get_bind()
+    for collection in collections:
+        bind.execute(
+            text(
+                """
+                INSERT INTO collections
+                    (id, title, subtitle, description, filter_definition, is_active, sort_order, created_at)
+                VALUES
+                    (gen_random_uuid(), :title, :subtitle, :description, CAST(:filter_definition AS json), true, :sort_order, now())
+                """
+            ),
+            {
+                "title": collection["title"],
+                "subtitle": collection.get("subtitle"),
+                "description": collection.get("description"),
+                "filter_definition": json.dumps(collection["filter_definition"]),
+                "sort_order": collection.get("sort_order", 0),
             },
         )
 
