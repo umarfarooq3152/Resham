@@ -9,7 +9,7 @@ missing from a crawl are aged out via `catalog.freshness`, never deleted.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select

@@ -2,7 +2,6 @@
 
 import logging
 import re
-from typing import Any
 
 from resham.nlp.kids_age import product_supports_age
 from resham.nlp.pakistani_events import event_match_score

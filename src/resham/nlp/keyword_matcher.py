@@ -1,7 +1,6 @@
 """Rule-based keyword matching for product occasion and material tagging."""
 
 import logging
-from typing import Any
 
 from resham.schemas.product import Product
 from resham.nlp.pakistani_events import infer_product_event
