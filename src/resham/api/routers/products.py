@@ -10,6 +10,8 @@ from resham.db.models.product import Product as ProductRow
 from resham.repositories.product_repo import ProductRepository
 from resham.schemas.product import Product, ProductSearchResponse
 from resham.search.eligibility import EligibilityFilters
+from resham.search.relax import DEFAULT_RELAXABLE_FIELDS
+from resham.search.service import build_query_text
 from resham.search.service import search as run_search
 from resham.vectorstore.client import get_collection
 
@@ -18,11 +20,6 @@ router = APIRouter(prefix="/products", tags=["products"])
 
 def get_vector_collection():
     return get_collection()
-
-
-def _build_query_text(query: str | None, tags: list[str]) -> str:
-    terms = [term.strip() for term in [query or "", *tags] if term.strip()]
-    return " ".join(terms)
 
 
 def _paginate(rows: list[ProductRow], page: int, page_size: int) -> tuple[list[ProductRow], bool]:
@@ -49,7 +46,7 @@ async def search_products(
     session: AsyncSession = Depends(get_session),
     vector_collection=Depends(get_vector_collection),
 ) -> ProductSearchResponse:
-    query_text = _build_query_text(q, tags)
+    query_text = build_query_text(q, tags)
     result = await run_search(
         session,
         vector_collection,
@@ -66,6 +63,7 @@ async def search_products(
         occasion=occasion,
         query_text=query_text,
         semantic_query=query_text,
+        relaxable_fields=DEFAULT_RELAXABLE_FIELDS,
     )
     page_rows, has_more = _paginate(result.products, page, page_size)
     return ProductSearchResponse(

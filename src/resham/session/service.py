@@ -23,12 +23,16 @@ from resham.repositories.events_repo import SessionEventRepository
 from resham.schemas.product import ProductSearchResponse
 from resham.schemas.session import ChatTurnResponse, SessionState
 from resham.search.eligibility import EligibilityFilters
+from resham.search.relax import DEFAULT_RELAXABLE_FIELDS
+from resham.search.service import build_query_text
 from resham.search.service import search as run_search
 from resham.session.store.base import SessionStore
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 40
+
+_RELAXED_FIELD_LABELS = {"size": "size", "color": "color", "budget_max": "budget"}
 
 
 def _filters_from_state(state: SessionState) -> EligibilityFilters:
@@ -48,13 +52,19 @@ def _filters_from_state(state: SessionState) -> EligibilityFilters:
 def _no_results_reply(state: SessionState) -> str:
     """A canned reply for a genuine zero-result miss — the LLM's own reply
     text (written before the search ran) is never shown here, since it may
-    describe items the search then didn't actually return."""
+    describe items the search then didn't actually return. By the time this
+    fires, search/relax.py has already tried dropping occasion and every
+    non-hard filter, so this means nothing close exists either — the
+    message says so instead of suggesting relaxation that already ran."""
     if state.occasion:
         return (
-            f"I couldn't find anything matching that for {state.occasion} right now — "
-            "try adjusting the budget, size, or color."
+            f"I couldn't find anything close for {state.occasion} even after loosening the "
+            "filters — try a different product type, or tell me if department or age is off."
         )
-    return "I couldn't find anything matching that — try adjusting the budget, size, or color."
+    return (
+        "I couldn't find anything close, even after loosening the filters — "
+        "try a different product type, color, or budget range."
+    )
 
 
 def _relaxation_notice(
@@ -62,14 +72,32 @@ def _relaxation_notice(
     requested_occasion: str | None,
     effective_category: str | None,
     requested_category: str | None,
+    dropped_filters: list[str],
 ) -> str | None:
     """Explain a relaxed result set in plain shopping language, rather than
-    presenting the fallback as if it were an exact match."""
-    if requested_occasion and effective_occasion != requested_occasion:
-        return f"Nothing tagged specifically for {requested_occasion}, so here's what's closest."
+    presenting the fallback as if it were an exact match — names exactly
+    which filters were loosened so the shopper can tell it apart from an
+    exact hit and put one back via the existing filter chips if they want."""
     if requested_category and effective_category != requested_category:
-        return f"Nothing in {requested_category} matched, so here are culturally similar alternatives."
-    return None
+        return (
+            f"Nothing in {requested_category} matched, "
+            "so here are culturally similar alternatives."
+        )
+
+    dropped_occasion = requested_occasion and effective_occasion != requested_occasion
+    labels = [_RELAXED_FIELD_LABELS[f] for f in dropped_filters if f in _RELAXED_FIELD_LABELS]
+
+    if not dropped_occasion and not labels:
+        return None
+    if dropped_occasion and not labels:
+        return f"Nothing tagged specifically for {requested_occasion}, so here's what's closest."
+    loosened = " and ".join(labels)
+    if dropped_occasion:
+        return (
+            f"Nothing tagged specifically for {requested_occasion}, and I loosened "
+            f"{loosened} too — here's the closest match."
+        )
+    return f"No exact match for every detail, so I loosened {loosened} — here's the closest fit."
 
 
 class SessionService:
@@ -128,14 +156,24 @@ class SessionService:
         filters = _filters_from_state(new_state)
         occasion_is_hard = "occasion" in new_state.hard_constraints
 
+        # query_text mirrors what the browse endpoint reconstructs from
+        # session state for a "load more" replay (build_query_text over
+        # semantic_query + style_descriptors) rather than the raw chat
+        # message — otherwise keyword scoring would rank this turn's page 1
+        # differently from the browse-driven page 2+ that follows it, and
+        # scrolling could silently skip or resurface a product between
+        # pages. See search/service.py's build_query_text docstring.
+        query_text = build_query_text(new_state.semantic_query, new_state.style_descriptors)
+
         result = await run_search(
             self._db,
             self._collection,
             filters,
             occasion=new_state.occasion,
             occasion_is_hard=occasion_is_hard,
-            query_text=text,
+            query_text=query_text,
             semantic_query=new_state.semantic_query or "",
+            relaxable_fields=DEFAULT_RELAXABLE_FIELDS,
         )
 
         products = [row_to_pydantic_product(row) for row in result.products[: self._page_size]]
@@ -146,6 +184,7 @@ class SessionService:
             notice = _relaxation_notice(
                 result.effective_occasion, new_state.occasion,
                 result.effective_category, new_state.category,
+                result.dropped_filters,
             )
             reply = notice or diff.assistant_reply
 

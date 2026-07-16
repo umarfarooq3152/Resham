@@ -289,6 +289,120 @@ async def test_relaxation_never_triggers_when_exact_matches_exist(db_session, te
 
 
 @pytest.mark.asyncio
+async def test_relaxation_stops_at_the_first_relaxable_field_that_yields_a_match(
+    db_session, test_brand
+):
+    """size is peeled before color/budget (per _RELAXATION_ORDER) — a
+    product that already matches color+budget should surface as soon as
+    size is dropped, without color or budget ever being touched."""
+    product = _product(test_brand.id, "21", "Blue Kurta", colors=["Blue"], min_price=3000, max_price=3000)
+    await _add_and_flush(db_session, product)
+    await _add_and_flush(db_session, _variant(product.id, "v1", color="Blue", size="L", price=3000))
+
+    filters = _scoped(color="blue", size="M", budget_max=5000)
+
+    async def _search_once(current_filters, current_occasion):
+        eligible = await eligible_products(db_session, current_filters)
+        return await rank_products(eligible, query_text="", occasion=current_occasion, semantic_query="", collection=None)
+
+    relaxed = await search_with_relaxation(
+        _search_once, filters, occasion=None, occasion_is_hard=False,
+        relaxable_fields=frozenset({"size", "color", "budget_max"}),
+    )
+
+    assert relaxed.dropped_filters == ["size"]
+    assert product.external_id in {r.external_id for r in relaxed.products}
+
+
+@pytest.mark.asyncio
+async def test_relaxation_peels_multiple_fields_cumulatively_before_giving_up(
+    db_session, test_brand
+):
+    """Dropping size alone isn't enough here (wrong color too) — the ladder
+    must keep peeling into color before it finds a match, and never needs
+    to touch budget to get there."""
+    product = _product(test_brand.id, "22", "Red Kurta", colors=["Red"], min_price=3000, max_price=3000)
+    await _add_and_flush(db_session, product)
+    await _add_and_flush(db_session, _variant(product.id, "v1", color="Red", size="L", price=3000))
+
+    filters = _scoped(color="blue", size="M", budget_max=5000)
+
+    async def _search_once(current_filters, current_occasion):
+        eligible = await eligible_products(db_session, current_filters)
+        return await rank_products(eligible, query_text="", occasion=current_occasion, semantic_query="", collection=None)
+
+    relaxed = await search_with_relaxation(
+        _search_once, filters, occasion=None, occasion_is_hard=False,
+        relaxable_fields=frozenset({"size", "color", "budget_max"}),
+    )
+
+    assert relaxed.dropped_filters == ["size", "color"]
+    assert product.external_id in {r.external_id for r in relaxed.products}
+
+
+@pytest.mark.asyncio
+async def test_relaxation_never_drops_a_field_the_caller_did_not_mark_relaxable(
+    db_session, test_brand
+):
+    """A field the shopper stated as a hard requirement this turn is never
+    silently dropped, even if dropping it would have produced a match —
+    callers express that by simply omitting it from relaxable_fields."""
+    product = _product(test_brand.id, "23", "Red Kurta", colors=["Red"], min_price=3000, max_price=3000)
+    await _add_and_flush(db_session, product)
+    await _add_and_flush(db_session, _variant(product.id, "v1", color="Red", size="L", price=3000))
+
+    filters = _scoped(color="blue", size="M", budget_max=5000)
+
+    async def _search_once(current_filters, current_occasion):
+        eligible = await eligible_products(db_session, current_filters)
+        return await rank_products(eligible, query_text="", occasion=current_occasion, semantic_query="", collection=None)
+
+    # Only size is offered — color stays hard, so the ladder must exhaust
+    # without ever clearing it and return nothing.
+    relaxed = await search_with_relaxation(
+        _search_once, filters, occasion=None, occasion_is_hard=False,
+        relaxable_fields=frozenset({"size"}),
+    )
+
+    assert relaxed.products == []
+    assert "color" not in relaxed.dropped_filters
+
+
+@pytest.mark.asyncio
+async def test_relaxation_blends_exact_matches_ahead_of_relaxed_ones_for_scrolling(
+    db_session, test_brand
+):
+    """The exact match must lead the feed (page 1), with the
+    size-relaxed match appended after it (later pages) rather than either
+    replacing the other — this is what lets scrolling past the exact
+    matches surface progressively broader ones instead of a hard wall."""
+    exact = _product(test_brand.id, "24", "Blue Kurta Exact", colors=["Blue"])
+    await _add_and_flush(db_session, exact)
+    await _add_and_flush(db_session, _variant(exact.id, "v1", color="Blue", size="M", price=3000))
+
+    relaxed_only = _product(test_brand.id, "25", "Blue Kurta Wrong Size", colors=["Blue"])
+    await _add_and_flush(db_session, relaxed_only)
+    await _add_and_flush(db_session, _variant(relaxed_only.id, "v1", color="Blue", size="L", price=3000))
+
+    filters = _scoped(color="blue", size="M", budget_max=5000)
+
+    async def _search_once(current_filters, current_occasion):
+        eligible = await eligible_products(db_session, current_filters)
+        return await rank_products(eligible, query_text="", occasion=current_occasion, semantic_query="", collection=None)
+
+    relaxed = await search_with_relaxation(
+        _search_once, filters, occasion=None, occasion_is_hard=False,
+        relaxable_fields=frozenset({"size", "color", "budget_max"}),
+    )
+
+    # No relaxation was needed to find the first match, so the reply-facing
+    # fields must say so even though a broader match rides along for scroll.
+    assert relaxed.dropped_filters == []
+    ids = [r.external_id for r in relaxed.products]
+    assert ids == ["24", "25"]
+
+
+@pytest.mark.asyncio
 async def test_search_service_raises_on_eligibility_violation_if_ranking_ever_misbehaves(
     db_session, test_brand, monkeypatch
 ):

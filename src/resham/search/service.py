@@ -5,7 +5,7 @@ counts as a match.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from chromadb.api.models.Collection import Collection
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,20 @@ from resham.search.ranking import rank_products
 from resham.search.relax import search_with_relaxation
 
 logger = logging.getLogger(__name__)
+
+
+def build_query_text(query: str | None, tags: list[str]) -> str:
+    """The single definition of "query text for keyword scoring" shared by
+    both search surfaces (session/service.py's chat turn and the
+    products.py browse/pagination endpoint). Chat's `loadMore` replays a
+    later page through the browse endpoint using session state alone (see
+    web/src/hooks/useSessionChat.ts's `buildPaginationQuery`), so if the two
+    callers ever computed `query_text` differently, keyword scoring would
+    rank chat's page 1 and the browse-driven page 2+ differently enough
+    that "scroll for progressively looser results" could silently skip or
+    resurface a product between pages."""
+    terms = [term.strip() for term in [query or "", *tags] if term.strip()]
+    return " ".join(terms)
 
 
 class EligibilityViolation(RuntimeError):
@@ -34,6 +48,7 @@ class SearchResult:
     effective_category: str | None
     dropped_occasion: bool
     dropped_category: bool
+    dropped_filters: list[str] = field(default_factory=list)
 
 
 def _assert_subset(ranked: list[ProductRow], eligible: list[ProductRow]) -> None:
@@ -52,10 +67,12 @@ async def search(
     occasion_is_hard: bool = False,
     query_text: str = "",
     semantic_query: str = "",
+    relaxable_fields: frozenset[str] = frozenset(),
 ) -> SearchResult:
     """The shared search entrypoint: gate with eligibility.py (hard filters
     only), order with ranking.py (vector + rule-based, never widens the
-    set), recover from a genuine zero-match occasion miss with relax.py.
+    set), recover from a genuine zero-match with relax.py — occasion always,
+    plus whichever of size/color/budget_max the caller marks relaxable.
     """
 
     async def _search_once(
@@ -74,7 +91,11 @@ async def search(
         return ranked
 
     relaxed = await search_with_relaxation(
-        _search_once, filters, occasion, occasion_is_hard=occasion_is_hard
+        _search_once,
+        filters,
+        occasion,
+        occasion_is_hard=occasion_is_hard,
+        relaxable_fields=relaxable_fields,
     )
 
     return SearchResult(
@@ -84,4 +105,5 @@ async def search(
         effective_category=relaxed.effective_category,
         dropped_occasion=relaxed.dropped_occasion,
         dropped_category=relaxed.dropped_category,
+        dropped_filters=relaxed.dropped_filters,
     )
