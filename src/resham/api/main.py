@@ -74,7 +74,12 @@ def create_app() -> FastAPI:
             raise
         return JSONResponse(
             status_code=500,
-            content={"error": {"code": "internal_error", "message": "An unexpected error occurred"}},
+            content={
+                "error": {
+                    "code": "internal_error",
+                    "message": "An unexpected error occurred",
+                }
+            },
         )
 
     @app.get("/healthz")
@@ -116,9 +121,11 @@ def create_app() -> FastAPI:
 
         return health_status
 
-    from resham.api.routers import session
+    from resham.api.routers import extension, session, voice
 
     app.include_router(session.router)
+    app.include_router(extension.router)
+    app.include_router(voice.router)
 
     return app
 
