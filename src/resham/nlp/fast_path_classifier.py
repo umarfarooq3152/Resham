@@ -234,11 +234,17 @@ def _clear_filter_field(lower_text: str) -> str | None:
         "size": ("size",),
         "age": ("age",),
     }
-    if not re.search(r"\b(?:remove|clear|ignore|drop|without|any|all)\b", normalized):
-        return None
     for field, words in aliases.items():
-        if any(re.search(rf"\b{re.escape(word)}\b", normalized) for word in words):
-            return field
+        for word in words:
+            escaped = re.escape(word)
+            patterns = [
+                rf"^(?:remove|clear|drop)\s+(?:the\s+)?{escaped}\s*$",
+                rf"^ignore\s+(?:the\s+)?{escaped}\s*$",
+                rf"^without\s+(?:a\s+|the\s+)?{escaped}\s*$",
+                rf"^(?:any|all)\s+{escaped}\s*$",
+            ]
+            if any(re.fullmatch(pattern, normalized) for pattern in patterns):
+                return field
     return None
 
 

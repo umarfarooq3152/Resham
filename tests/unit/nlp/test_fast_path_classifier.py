@@ -232,6 +232,12 @@ def test_individual_filter_removal_is_a_fast_path(query, field):
     assert match.diff.clear_fields == [field]
 
 
+def test_any_age_inside_real_search_does_not_clear_filter():
+    match = classify("kids shirts any age bro", SessionState(), [])
+
+    assert match is None or match.diff.clear_fields == []
+
+
 def test_specific_style_can_be_removed_without_clearing_other_styles():
     match = classify(
         "without stripes",

@@ -29,9 +29,7 @@ async def get_wishlist(
     user_id: Optional[UUID] = Depends(get_current_user_id_optional),
     session: AsyncSession = Depends(get_session),
 ) -> WishlistResponse:
-    device = await DeviceRepository(session).get_by_id(device_id)
-    if device is None:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await DeviceRepository(session).get_or_create(device_id)
 
     wishlist_repo = WishlistRepository(session)
     items = await (
@@ -64,9 +62,7 @@ async def add_to_wishlist(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     device_repo = DeviceRepository(session)
-    device = await device_repo.get_by_id(device_id)
-    if device is None:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await device_repo.get_or_create(device_id)
 
     product = await ProductRepository(session).get_by_composite_key(product_id)
     if product is None:
@@ -96,9 +92,7 @@ async def remove_from_wishlist(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     device_repo = DeviceRepository(session)
-    device = await device_repo.get_by_id(device_id)
-    if device is None:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await device_repo.get_or_create(device_id)
 
     product = await ProductRepository(session).get_by_composite_key(product_id)
     if product is None:

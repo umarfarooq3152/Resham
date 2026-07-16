@@ -140,9 +140,11 @@ def create_app() -> FastAPI:
     from resham.api.routers import (
         admin,
         auth,
+        brands,
         collections,
         devices,
         extension,
+        products,
         session,
         voice,
         wishlist,
@@ -155,6 +157,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(wishlist.router)
     app.include_router(collections.router)
+    app.include_router(brands.router)
+    app.include_router(products.router)
     app.include_router(admin.router)
 
     return app
