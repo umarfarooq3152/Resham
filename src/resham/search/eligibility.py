@@ -15,14 +15,20 @@ import re
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resham.db.models.brand import Brand
 from resham.db.models.product import Product as ProductRow
 from resham.db.models.product_variant import ProductVariant as VariantRow
 from resham.nlp.colors import colors_match
-from resham.nlp.garments import matches_garment_text
+from resham.nlp.garments import garment_search_terms, matches_garment_text
+
+# Keeps an IN(...) clause's bind-parameter count well under asyncpg/Postgres's
+# hard 32767 limit — a broad, category-less color/size/budget search over a
+# catalog this size can otherwise pass tens of thousands of product ids in a
+# single query and crash outright.
+_VARIANT_ID_BATCH_SIZE = 20_000
 
 SIZE_ALIASES = {
     "EXTRASMALL": "XS",
@@ -89,10 +95,13 @@ async def _variant_eligible_product_ids(
     if not product_ids:
         return set()
 
-    stmt = select(VariantRow).where(
-        VariantRow.product_id.in_(product_ids), VariantRow.available.is_(True)
-    )
-    variants = (await session.execute(stmt)).scalars().all()
+    variants: list[VariantRow] = []
+    for start in range(0, len(product_ids), _VARIANT_ID_BATCH_SIZE):
+        batch = product_ids[start : start + _VARIANT_ID_BATCH_SIZE]
+        stmt = select(VariantRow).where(
+            VariantRow.product_id.in_(batch), VariantRow.available.is_(True)
+        )
+        variants.extend((await session.execute(stmt)).scalars().all())
 
     requested_size = normalize_size(filters.size) if filters.size else None
     matching_ids: set[UUID] = set()
@@ -138,6 +147,26 @@ async def eligible_products(
             stmt = stmt.where(Brand.slug.in_(filters.brands))
         if filters.excluded_brands:
             stmt = stmt.where(Brand.slug.notin_(filters.excluded_brands))
+
+    if filters.category:
+        # Pushes matches_garment_text's candidate set down into SQL so
+        # Postgres — not the app — discards the vast majority of an
+        # unrelated-category catalog before it's ever transferred and
+        # ORM-hydrated. ILIKE is a deliberately looser superset of
+        # matches_garment_text's word-boundary regex (never a stricter
+        # subset), so this can only admit extra rows, never drop a real
+        # match — the identical Python check below still runs on the
+        # (now far smaller) result and remains the sole authority on
+        # what's actually eligible.
+        search_terms = garment_search_terms(filters.category)
+        stmt = stmt.where(
+            or_(
+                *(ProductRow.product_family.ilike(f"%{term}%") for term in search_terms),
+                *(ProductRow.category.ilike(f"%{term}%") for term in search_terms),
+                *(ProductRow.title.ilike(f"%{term}%") for term in search_terms),
+                *(ProductRow.vision_category.ilike(f"%{term}%") for term in search_terms),
+            )
+        )
 
     rows = list((await session.execute(stmt)).scalars().all())
 

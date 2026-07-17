@@ -389,6 +389,19 @@ def matches_garment_text(value: str, garment: str | None) -> bool:
     )
 
 
+def garment_search_terms(garment: str) -> list[str]:
+    """The same canonical + metadata-alias terms matches_garment_text checks,
+    for a caller that wants to pre-filter candidate rows at the SQL level
+    (e.g. an ILIKE ANY(...) over product_family/category/title) before
+    running matches_garment_text as the authoritative, still-final check.
+    An ILIKE pre-filter is intentionally looser than matches_garment_text's
+    word-boundary regex (it can accept a few extra rows a substring match
+    allows through), so it must never replace the Python check — only
+    narrow what reaches it."""
+    canonical = _normalized(garment)
+    return [canonical, *_GARMENT_METADATA_ALIASES.get(canonical, ())]
+
+
 def ground_style_descriptors(text: str, provider_descriptors: list[str]) -> list[str]:
     """Remove inferred hard styles and add explicit deterministic descriptors."""
     explicit = extract_search_descriptors(text)
