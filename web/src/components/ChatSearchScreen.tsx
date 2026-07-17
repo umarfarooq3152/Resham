@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Mic, Send, ArrowLeft, Sparkles, SlidersHorizontal, Eye, RefreshCw, Compass, Heart, User, LogOut, ShieldCheck, LogIn } from 'lucide-react';
 import { Product } from '../types';
@@ -122,6 +122,29 @@ export default function ChatSearchScreen({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // Infinite scroll: observes a sentinel placed after the product grid and
+  // calls loadMore() as soon as it's within 400px of the viewport, so the
+  // next page arrives before the user actually hits the bottom — no click
+  // required. A callback ref (rather than a plain ref + effect) re-attaches
+  // the observer automatically whenever the sentinel mounts/unmounts, which
+  // happens whenever hasMoreResults flips (loadMore's own in-flight guard
+  // makes repeated intersection callbacks safe to ignore).
+  const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreSentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      loadMoreObserverRef.current?.disconnect();
+      if (!node) return;
+      loadMoreObserverRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting) loadMore();
+        },
+        { rootMargin: '400px' }
+      );
+      loadMoreObserverRef.current.observe(node);
+    },
+    [loadMore]
+  );
 
   useEffect(() => {
     scrollToBottom();
@@ -395,14 +418,10 @@ export default function ChatSearchScreen({
             ))}
           </div>
           {(hasMoreResults || isLoadingMore) && (
-            <div className="flex flex-col items-center gap-2">
-              <button
-                onClick={loadMore}
-                disabled={isLoadingMore}
-                className="rounded-full border border-[#003224] px-5 py-2.5 text-sm font-semibold text-[#003224] hover:bg-[#003224] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-              >
-                {isLoadingMore ? 'Loading more…' : `Show More (${filteredProducts.length} of ${totalResults})`}
-              </button>
+            <div ref={loadMoreSentinelRef} className="flex flex-col items-center gap-2 py-2">
+              {isLoadingMore && (
+                <div className="h-5 w-5 border-2 border-[#003224] border-t-transparent rounded-full animate-spin" />
+              )}
               <p className="text-xs text-gray-500 font-sans">
                 Viewing {filteredProducts.length} of {totalResults} matched products.
               </p>
