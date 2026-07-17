@@ -2,6 +2,7 @@
 
 import logging
 import re
+from dataclasses import dataclass
 
 from resham.nlp.kids_age import product_supports_age
 from resham.nlp.pakistani_events import event_match_score
@@ -28,6 +29,29 @@ logger = logging.getLogger(__name__)
 CATEGORY_MATCH_WEIGHT = 1.0
 SHOPIFY_TAGS_MATCH_WEIGHT = 0.75
 DESCRIPTION_MATCH_WEIGHT = 0.25
+# Scale applied to semantic_score inside the hybrid_score formula (search()
+# and rank_products() both use this shape: keyword + occasion + 0.75 * semantic).
+SEMANTIC_HYBRID_SCALE = 0.75
+
+
+@dataclass(frozen=True)
+class RankingWeights:
+    """Named, inspectable form of the hybrid scoring constants above.
+
+    Exists so the weights are nameable/visible to a regression eval (see
+    tests/regression/) rather than bare literals scattered through the
+    scoring functions — NOT so they can be swept/grid-searched. Tuning
+    these against a small hand-labeled set would be overfitting to the
+    eval set; treat this as a transparency seam, not a knob.
+    """
+
+    category_match: float = CATEGORY_MATCH_WEIGHT
+    shopify_tags_match: float = SHOPIFY_TAGS_MATCH_WEIGHT
+    description_match: float = DESCRIPTION_MATCH_WEIGHT
+    semantic_hybrid_scale: float = SEMANTIC_HYBRID_SCALE
+
+
+DEFAULT_RANKING_WEIGHTS = RankingWeights()
 # Semantic profiles are valuable for focused vibe searches, but enriching
 # several thousand broad occasion matches on demand makes a one-word audience
 # confirmation take minutes. Structured filters have already established
@@ -192,7 +216,9 @@ def _diversify_by_brand(
     return ranked
 
 
-def _keyword_score(product: Product, keywords: list[str]) -> float:
+def _keyword_score(
+    product: Product, keywords: list[str], weights: RankingWeights = DEFAULT_RANKING_WEIGHTS
+) -> float:
     """Calculate keyword match score for a product.
 
     Each keyword is checked against title, category (Shopify product_type),
@@ -207,6 +233,7 @@ def _keyword_score(product: Product, keywords: list[str]) -> float:
     Args:
         product: Product to score
         keywords: List of search keywords
+        weights: Named scoring weights (see RankingWeights)
 
     Returns:
         Score between 0 and 1 (1 = every keyword matched in title/category)
@@ -223,11 +250,11 @@ def _keyword_score(product: Product, keywords: list[str]) -> float:
     for kw in keywords:
         kw_lower = kw.lower()
         if _contains_word(kw_lower, name) or _contains_word(kw_lower, category):
-            score += CATEGORY_MATCH_WEIGHT
+            score += weights.category_match
         elif _contains_word(kw_lower, tags_text):
-            score += SHOPIFY_TAGS_MATCH_WEIGHT
+            score += weights.shopify_tags_match
         elif _contains_word(kw_lower, description):
-            score += DESCRIPTION_MATCH_WEIGHT
+            score += weights.description_match
 
     return score / len(keywords)
 
@@ -317,6 +344,11 @@ def _query_keywords(query: str) -> list[str]:
     expanded: list[str] = []
     for word in raw:
         key = word.strip("'-")
+        if not key:
+            # A stray lone "'" or "-" token strips to empty; an empty
+            # keyword's _contains_word regex (\bs?\b) matches almost
+            # everywhere, silently turning every product into a "hit".
+            continue
         if key in QUERY_ALIASES:
             expanded.extend(QUERY_ALIASES[key])
         elif key not in GENERIC_QUERY_WORDS:
@@ -485,6 +517,7 @@ class SearchService:
         department: str | None = None,
         require_all_keywords: bool = False,
         semantic_query: str | None = None,
+        weights: RankingWeights | None = None,
     ) -> ProductSearchResponse:
         """Search products with keyword scoring and filters.
 
@@ -502,10 +535,13 @@ class SearchService:
             page_size: Results per page
             kids: If True, search kids items only; if False (default),
                 exclude them from an ordinary adult search.
+            weights: Named scoring weights (see RankingWeights); defaults to
+                DEFAULT_RANKING_WEIGHTS when omitted.
 
         Returns:
             Paginated ProductSearchResponse with scored results
         """
+        weights = weights or DEFAULT_RANKING_WEIGHTS
         # Parse keywords from query
         keywords = _query_keywords(query)
         requested_category = category or extract_primary_garment(query)
@@ -553,7 +589,7 @@ class SearchService:
             semantic_query and len(filtered) <= SEMANTIC_SCORING_MAX_CANDIDATES
         )
         for product in filtered:
-            keyword_score = _keyword_score(product, keywords)
+            keyword_score = _keyword_score(product, keywords, weights)
             occasion_score = _cached_event_match_score(product, occasion) if occasion else 0.0
             semantic_score = (
                 _semantic_score(product, semantic_query or "")
@@ -563,7 +599,7 @@ class SearchService:
             # Coarse score tiers retain brand diversification while still
             # letting semantic relevance move better candidates upward.
             hybrid_score = round(
-                (keyword_score + occasion_score + 0.75 * semantic_score) * 10
+                (keyword_score + occasion_score + weights.semantic_hybrid_scale * semantic_score) * 10
             ) / 10
             scored.append((product, hybrid_score))
 
