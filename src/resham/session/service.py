@@ -18,6 +18,7 @@ from resham.catalog.product_view import row_to_pydantic_product
 from resham.llm.fallback import FallbackIntentProvider
 from resham.nlp.diff_merge import merge_session_state
 from resham.nlp.fast_path_classifier import classify, is_kids_request
+from resham.nlp.garments import requested_formality, requested_tradition
 from resham.repositories.chat_repo import ChatRepository
 from resham.repositories.events_repo import SessionEventRepository
 from resham.schemas.product import ProductSearchResponse
@@ -173,6 +174,8 @@ class SessionService:
             occasion_is_hard=occasion_is_hard,
             query_text=query_text,
             semantic_query=new_state.semantic_query or "",
+            tradition=requested_tradition(new_state.style_descriptors),
+            formality=requested_formality(new_state.style_descriptors),
             relaxable_fields=DEFAULT_RELAXABLE_FIELDS,
         )
 

@@ -56,3 +56,12 @@ def test_extracts_explicit_or_colors_but_not_colors_for_separate_outfit_pieces()
     assert extract_color_options(
         "dark blue baggy jeans I can wear with a black shirt"
     ) == ["dark blue"]
+
+
+def test_catalog_specific_spellings_and_regional_terms_are_recognized():
+    """Found via a live-catalog sample of products with no other color
+    signal: a merchant typo ("Pistacio") and a Pakistani-retail spelling of
+    turquoise ("Ferozi") that the alias table didn't cover."""
+    assert extract_color("Color: Pistacio") == "light green"
+    assert extract_color("Color: Ferozi") == "teal"
+    assert extract_color("Multi Woven Net Dupatta") == "multicolor"

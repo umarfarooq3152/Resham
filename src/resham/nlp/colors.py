@@ -31,7 +31,7 @@ SHADE_ALIASES: dict[str, tuple[str, ...]] = {
     "green": ("classic green", "true green"),
     "light green": (
         "light green", "mint", "mint green", "pastel green", "pistachio",
-        "pistachio green", "sage", "sage green",
+        "pistachio green", "pistacio", "sage", "sage green",
     ),
     "bright green": (
         "bright green", "apple green", "lime", "lime green", "grass green",
@@ -41,7 +41,10 @@ SHADE_ALIASES: dict[str, tuple[str, ...]] = {
         "dark green", "emerald", "emerald green", "forest green", "bottle green",
         "olive", "olive green", "hunter green", "racing green",
     ),
-    "teal": ("aqua", "turquoise", "sea green", "peacock blue", "peacock green"),
+    "teal": (
+        "aqua", "turquoise", "sea green", "peacock blue", "peacock green",
+        "ferozi", "firozi",
+    ),
     "dark teal": ("dark teal",),
     "pink": ("classic pink", "rose pink", "candy pink", "bubblegum pink"),
     "light pink": (
@@ -98,7 +101,7 @@ SHADE_ALIASES: dict[str, tuple[str, ...]] = {
     "dark black": ("jet black", "dark black"),
     "gold": ("golden", "antique gold", "rose gold", "champagne gold"),
     "silver": ("antique silver",),
-    "multicolor": ("multi color", "multi-color", "colourful", "colorful"),
+    "multicolor": ("multi", "multi color", "multi-color", "colourful", "colorful"),
 }
 
 _BASIC_MODIFIERS = ("basic", "plain", "standard", "true", "regular")

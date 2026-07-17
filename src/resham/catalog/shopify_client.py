@@ -23,6 +23,16 @@ BROWSER_USER_AGENT = (
 )
 
 
+class ShopifyFetchError(Exception):
+    """A page request failed (rate limit, 5xx, timeout, network error) —
+    distinct from a confirmed HTTP 200 empty response. Raised instead of
+    returned so _crawl_one_brand's existing try/except marks the whole
+    brand crawl "failed" and skips upsert_brand_products entirely, rather
+    than the caller treating an empty result as "this brand now has zero
+    products" and running freshness/missing logic against every existing
+    row for that brand."""
+
+
 class ShopifyClient:
     """Async HTTP client for Shopify's public products JSON endpoint."""
 
@@ -69,13 +79,13 @@ class ShopifyClient:
                             f"Shopify API error for {domain}: "
                             f"status={resp.status}"
                         )
-                        return {"products": []}
-        except asyncio.TimeoutError:
+                        raise ShopifyFetchError(f"{domain} returned status={resp.status}")
+        except asyncio.TimeoutError as e:
             logger.error(f"Timeout fetching products from {domain}")
-            return {"products": []}
+            raise ShopifyFetchError(f"Timeout fetching from {domain}") from e
         except aiohttp.ClientError as e:
             logger.error(f"Failed to fetch from {domain}: {e}")
-            return {"products": []}
+            raise ShopifyFetchError(f"Failed to fetch from {domain}: {e}") from e
 
     async def fetch_all_products(
         self, domain: str, max_pages: int = 20, max_products: int | None = None

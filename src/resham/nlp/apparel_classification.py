@@ -91,7 +91,7 @@ CASUAL_FABRICS = (
 )
 FORMAL_CONSTRUCTION = (
     "button down", "button front", "dress shirt", "office shirt", "oxford shirt",
-    "structured", "tailored", "collared", "collar", "cuffs", "fitted",
+    "structured", "tailored", "cuffs", "fitted",
 )
 CASUAL_CONSTRUCTION = (
     "graphic", "drawstring", "elastic waist", "pull over", "pullover", "loose",

@@ -36,10 +36,26 @@ class Product(Base):
 
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Canonical garment family (e.g. "kurta", "shalwar-kameez") computed at
-    # ingest via nlp.garments.extract_primary_garment — an exact,
+    # ingest via nlp.product_semantics.enrich_product_semantics — an exact,
     # low-cardinality column so eligibility SQL can filter on it directly
-    # instead of the noisy raw Shopify `category` text.
+    # instead of the noisy raw Shopify `category` text. Null when no source
+    # names a specific garment explicitly (see enrich_product_semantics'
+    # docstring) — never a fuzzy guess.
     product_family: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # Fallback only: eligibility.py reads this exclusively when a variant's
+    # own merchant-set color is missing (~57% of in-stock products lack any
+    # usable variant color) — extracted from title/tags/description at
+    # ingest, same enrich_product_semantics pass. Never overrides a real
+    # variant color.
+    text_derived_color: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Soft ranking signals only (search/ranking.py) — never an eligibility
+    # hard filter. Both are curated/explicit-word-only derivations (see
+    # nlp/garments.py's tradition_from_family and
+    # nlp/product_semantics.py), so real coverage is partial by design:
+    # ambiguous families/products are left None rather than guessed, and a
+    # None never excludes a product the way a hard filter would.
+    product_tradition: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    product_formality: Mapped[str | None] = mapped_column(String(20), nullable=True)
     vendor: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     shopify_tags: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)

@@ -300,6 +300,82 @@ def without_garment_descriptors(descriptors: list[str]) -> list[str]:
     return result
 
 
+# Verified against the live catalog (see product_semantics.py's
+# product_tradition derivation): only families that are unambiguously one
+# tradition in this catalog's real usage are listed. Genuinely mixed
+# families are deliberately omitted rather than guessed — e.g. "shirt"
+# (18k+ products) is a near-even split between eastern kameez tops
+# ("Stitched Embroidered Lawn Shirt+ Shalwar") and western casual shirts
+# ("Baggy Fit Checkered Shirt"), so it stays untagged rather than risk
+# hard-excluding real matches on either side of a tradition-filtered search.
+_EASTERN_FAMILIES = frozenset({
+    "kurta", "kurti", "shalwar kameez", "kameez", "shalwar", "lehenga",
+    "sherwani", "achkan", "gharara", "sharara", "saree", "abaya", "pishwas",
+    "prince coat", "vest", "suit",
+})
+_WESTERN_FAMILIES = frozenset({
+    "jeans", "t-shirt", "polo", "tank top", "sweatshirt", "tracksuit",
+    "hoodie", "blazer", "joggers", "jumpsuit", "cocktail dress", "wrap dress",
+    "shirt dress", "slip dress", "gown", "crop top", "peplum top",
+    "cigarette pants", "windbreaker", "sports bra", "cardigan", "sweater",
+    "coat", "leggings", "skirt", "dress", "shorts", "swimwear", "jacket",
+    "maxi", "trousers", "activewear",
+})
+
+
+def tradition_from_family(product_family: str | None) -> str | None:
+    """Derive eastern/western from the already-cleaned `product_family`
+    signal instead of a free-text heuristic — a hand-rolled classifier
+    matching fabric/construction words is what previously misclassified
+    real products (e.g. "collar" incidentally matching inside "Johnny
+    Collar Polo" and bumping it to "formal"). Ambiguous families return
+    None rather than a guess; ranking treats a missing tradition as no
+    boost, never as a mismatch."""
+    if product_family in _EASTERN_FAMILIES:
+        return "eastern"
+    if product_family in _WESTERN_FAMILIES:
+        return "western"
+    return None
+
+
+def is_recognized_garment_family(product_family: str | None) -> bool:
+    """True only for families this catalog has verified are actual
+    clothing (see `tradition_from_family`'s curated lists) — gates
+    `apparel_classification.classify_apparel_text`'s formality/tradition
+    fallback so a non-garment product (bag, scarf, dupatta, accessory)
+    never gets a guessed formality tier the heuristic was never designed
+    to produce for it."""
+    return product_family in _EASTERN_FAMILIES or product_family in _WESTERN_FAMILIES
+
+
+def requested_tradition(style_descriptors: list[str]) -> str | None:
+    """Pull an eastern/western/fusion request out of the turn's style
+    descriptors, for threading into search/ranking.py's soft tradition
+    boost."""
+    lowered = {item.lower().strip() for item in style_descriptors}
+    if "eastern" in lowered:
+        return "eastern"
+    if "western" in lowered:
+        return "western"
+    if "fusion" in lowered:
+        return "fusion"
+    return None
+
+
+_REQUESTABLE_FORMALITY = {"formal", "casual", "semi-formal", "party", "bridal"}
+
+
+def requested_formality(style_descriptors: list[str]) -> str | None:
+    """Pull an explicit formality request out of the turn's style
+    descriptors, for threading into search/ranking.py's soft formality
+    boost."""
+    for item in style_descriptors:
+        key = item.lower().strip()
+        if key in _REQUESTABLE_FORMALITY:
+            return key
+    return None
+
+
 def matches_garment_text(value: str, garment: str | None) -> bool:
     """Match a product title/type/tag string to one canonical garment family."""
     if not garment:

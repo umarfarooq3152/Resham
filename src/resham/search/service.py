@@ -67,6 +67,8 @@ async def search(
     occasion_is_hard: bool = False,
     query_text: str = "",
     semantic_query: str = "",
+    tradition: str | None = None,
+    formality: str | None = None,
     relaxable_fields: frozenset[str] = frozenset(),
 ) -> SearchResult:
     """The shared search entrypoint: gate with eligibility.py (hard filters
@@ -85,6 +87,8 @@ async def search(
             occasion=current_occasion,
             semantic_query=semantic_query,
             color=current_filters.color,
+            tradition=tradition,
+            formality=formality,
             collection=collection,
         )
         _assert_subset(ranked, eligible)

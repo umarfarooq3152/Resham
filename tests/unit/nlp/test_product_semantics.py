@@ -7,13 +7,19 @@ from resham.nlp.product_semantics import enrich_product_semantics
 from resham.schemas.product import Product
 
 
-def _product(name: str, category: str | None, shopify_tags: list[str] | None = None) -> Product:
+def _product(
+    name: str,
+    category: str | None,
+    shopify_tags: list[str] | None = None,
+    description: str | None = None,
+) -> Product:
     return Product(
         id="brand:1",
         name=name,
         price=1000.0,
         category=category,
         shopify_tags=shopify_tags or [],
+        description=description,
         image="https://example.com/a.jpg",
         product_url="https://example.com/a",
     )
@@ -106,3 +112,93 @@ def test_unstitched_appearing_before_the_component_word_still_does_not_shadow_it
     enriched = enrich_product_semantics(product)
 
     assert enriched.semantics.product_family == "shirt"
+
+
+def test_text_derived_color_reads_an_explicit_color_label_in_the_description():
+    """Real catalog pattern: ~57% of in-stock products have no merchant-set
+    variant color at all, but this catalog's descriptions routinely carry
+    an explicit "Color: X" line that title/tags alone miss."""
+    product = _product(
+        "Viscose Scarf", category=None,
+        description="Scarf\nViscose Scarf with stitched borders\nFabric: Viscose\nColor: Blue",
+    )
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.text_derived_color == "blue"
+
+
+def test_text_derived_color_reads_a_color_named_directly_in_the_title():
+    product = _product("Cross-Body Bags - E062 - Mustard", category="Cross-Body Bags")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.text_derived_color == "dark yellow"
+
+
+def test_text_derived_color_is_none_when_no_source_names_a_color():
+    product = _product("Signature Piece - 5001", category="Weavers Tale")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.text_derived_color is None
+
+
+def test_product_tradition_derives_eastern_from_an_unambiguous_family():
+    product = _product("Embroidered Lehenga - 2201", category="Lehenga")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.product_tradition == "eastern"
+
+
+def test_product_tradition_derives_western_from_an_unambiguous_family():
+    product = _product("Slim Fit Blazer", category="Blazer")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.product_tradition == "western"
+
+
+def test_product_tradition_is_none_for_a_genuinely_mixed_family():
+    """"shirt" is a near-even split between eastern kameez tops and western
+    casual shirts in the live catalog — asserting either would be a guess."""
+    product = _product("Regular Fit Shirt", category="Shirt")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.product_tradition is None
+
+
+def test_product_formality_reads_an_explicit_merchant_label_first():
+    """An explicit merchant word always wins over the computed tier, even
+    when they'd disagree — "Formal" here overrides what would otherwise
+    resolve to a lower/higher tier from item+fabric rules alone."""
+    product = _product("Formal Chino Trouser", category="Trousers")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.product_formality == "formal"
+
+
+def test_product_formality_falls_back_to_the_item_tier_for_a_recognized_garment():
+    """No explicit word, but "trousers" is a recognized western family (see
+    garments.is_recognized_garment_family), so classify_apparel_text's tier
+    heuristic fills the gap instead of leaving it null."""
+    product = _product("Chino Trouser", category="Trousers")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.product_formality == "semi-formal"
+
+
+def test_product_formality_is_none_for_an_unrecognized_non_garment_family():
+    """A bag has no formality tier that classify_apparel_text was designed
+    to produce — is_recognized_garment_family gates the tier fallback so a
+    non-garment product is never assigned a meaningless default instead of
+    being left honestly unclassified."""
+    product = _product("Embroidered Clutch", category="Bag")
+
+    enriched = enrich_product_semantics(product)
+
+    assert enriched.semantics.product_formality is None

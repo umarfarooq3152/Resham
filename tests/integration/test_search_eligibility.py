@@ -154,6 +154,52 @@ async def test_color_size_price_must_coexist_on_the_same_variant(db_session, tes
 
 
 @pytest.mark.asyncio
+async def test_text_derived_color_finds_a_product_whose_variant_has_no_color_at_all(
+    db_session, test_brand
+):
+    """~57% of in-stock products in the live catalog have no merchant-set
+    variant color at all and are otherwise unreachable by any
+    color-filtered search regardless of their actual color — the
+    ingest-time text_derived_color fallback (title/tags/description) is
+    what makes them findable."""
+    product = _product(
+        test_brand.id, "50", "Black Abaya", text_derived_color="black",
+    )
+    await _add_and_flush(db_session, product)
+    await _add_and_flush(db_session, _variant(product.id, "v1", color=None, size="M", price=3000))
+
+    rows = await eligible_products(db_session, _scoped(color="black"))
+
+    assert product.external_id in {r.external_id for r in rows}
+
+
+@pytest.mark.asyncio
+async def test_text_derived_color_never_overrides_a_real_variant_color(db_session, test_brand):
+    """A merchant-set variant color is always authoritative — the
+    text-derived fallback must never let a mismatched real color pass."""
+    product = _product(
+        test_brand.id, "51", "Red Abaya", text_derived_color="black",
+    )
+    await _add_and_flush(db_session, product)
+    await _add_and_flush(db_session, _variant(product.id, "v1", color="Red", size="M", price=3000))
+
+    rows = await eligible_products(db_session, _scoped(color="black"))
+
+    assert product.external_id not in {r.external_id for r in rows}
+
+
+@pytest.mark.asyncio
+async def test_no_color_signal_anywhere_is_excluded_not_guessed(db_session, test_brand):
+    product = _product(test_brand.id, "52", "Unlabeled Item", text_derived_color=None)
+    await _add_and_flush(db_session, product)
+    await _add_and_flush(db_session, _variant(product.id, "v1", color=None, size="M", price=3000))
+
+    rows = await eligible_products(db_session, _scoped(color="black"))
+
+    assert product.external_id not in {r.external_id for r in rows}
+
+
+@pytest.mark.asyncio
 async def test_size_filter_normalizes_common_labels_at_variant_level(db_session, test_brand):
     product = _product(test_brand.id, "9", "Sized Shirt")
     await _add_and_flush(db_session, product)
@@ -400,6 +446,50 @@ async def test_relaxation_blends_exact_matches_ahead_of_relaxed_ones_for_scrolli
     assert relaxed.dropped_filters == []
     ids = [r.external_id for r in relaxed.products]
     assert ids == ["24", "25"]
+
+
+@pytest.mark.asyncio
+async def test_tradition_boosts_ranking_without_excluding_a_null_tradition_product(
+    db_session, test_brand
+):
+    """Tradition is a soft ranking signal only (search/ranking.py's
+    STYLE_MATCH_BOOST) — a requested "eastern" tradition must rank a
+    tagged-eastern product ahead of one with no tradition signal at all,
+    but must never remove the untagged product from the results, since
+    hard-excluding on an absent signal would recreate the same coverage
+    bug this session already fixed for department."""
+    eastern = _product(
+        test_brand.id, "60", "Eastern Kurta", product_family="kurta", product_tradition="eastern",
+    )
+    unknown = _product(
+        test_brand.id, "61", "Mystery Shirt", product_family="shirt", product_tradition=None,
+    )
+    await _add_and_flush(db_session, eastern, unknown)
+
+    eligible = await eligible_products(db_session, _scoped())
+    ranked = await rank_products(
+        eligible, query_text="", occasion=None, semantic_query="", tradition="eastern", collection=None
+    )
+
+    ids = {r.external_id for r in ranked}
+    assert {"60", "61"} <= ids  # neither product was excluded
+
+
+@pytest.mark.asyncio
+async def test_tradition_mismatch_does_not_exclude_the_product_either(db_session, test_brand):
+    """A product explicitly tagged the opposite tradition still isn't
+    removed — tradition only ever boosts, it's never a gate."""
+    western = _product(
+        test_brand.id, "62", "Denim Jeans", product_family="jeans", product_tradition="western",
+    )
+    await _add_and_flush(db_session, western)
+
+    eligible = await eligible_products(db_session, _scoped())
+    ranked = await rank_products(
+        eligible, query_text="", occasion=None, semantic_query="", tradition="eastern", collection=None
+    )
+
+    assert "62" in {r.external_id for r in ranked}
 
 
 @pytest.mark.asyncio

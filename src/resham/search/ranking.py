@@ -30,6 +30,13 @@ from resham.services.search_service import (
 )
 from resham.vectorstore.embedding import embed_texts
 
+# A partial-coverage soft signal (see db/models/product.py's product_tradition/
+# product_formality docstring) — sized well below keyword/occasion match
+# weight (typically up to 1.0 each) so a confirmed tradition/formality match
+# nudges ranking without ever letting an absent (None) value act like a
+# penalty relative to a product that happens to match.
+STYLE_MATCH_BOOST = 0.3
+
 
 async def _compute_vector_scores(
     rows: list[ProductRow], semantic_query: str, collection: Collection
@@ -69,6 +76,8 @@ async def rank_products(
     occasion: str | None = None,
     semantic_query: str = "",
     color: str | None = None,
+    tradition: str | None = None,
+    formality: str | None = None,
     collection: Collection | None = None,
 ) -> list[ProductRow]:
     """Order an already-eligible candidate set by relevance.
@@ -104,7 +113,14 @@ async def rank_products(
         keyword_score = _keyword_score(product, keywords)
         occasion_score = event_match_score(product, occasion) if occasion else 0.0
         semantic_score = vector_scores.get(row.id, 0.0)
-        hybrid_score = round((keyword_score + occasion_score + 0.75 * semantic_score) * 10) / 10
+        style_score = 0.0
+        if tradition and row.product_tradition == tradition:
+            style_score += STYLE_MATCH_BOOST
+        if formality and row.product_formality == formality:
+            style_score += STYLE_MATCH_BOOST
+        hybrid_score = round(
+            (keyword_score + occasion_score + style_score + 0.75 * semantic_score) * 10
+        ) / 10
         scored.append((product, hybrid_score))
 
     ordered_pydantic = _dedupe_color_variants(_diversify_by_brand(scored), requested_color=color)

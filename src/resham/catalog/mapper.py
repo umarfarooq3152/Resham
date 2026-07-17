@@ -182,17 +182,27 @@ def is_non_apparel_listing(
     return pattern.search(text) is not None
 
 
-def _is_kids_apparel(
-    title: str, category: str | None, shopify_tags: list[str], vendor: str | None = None
+def is_kids_apparel(
+    title: str,
+    category: str | None,
+    shopify_tags: list[str],
+    vendor: str | None = None,
+    description_text: str | None = None,
 ) -> bool:
     category_lower = (category or "").lower()
     if category_lower.startswith(KIDS_CATEGORY_PREFIXES) or category_lower == "kids":
         return True
-    text = f"{title} {category_lower} {' '.join(shopify_tags)} {vendor or ''}".lower()
+    # description_text is included because this catalog's kids listings
+    # sometimes name the audience only there (e.g. "toddler girls", "5 to 6
+    # years") with no kids word in title/category/tags at all.
+    text = (
+        f"{title} {category_lower} {' '.join(shopify_tags)} {vendor or ''} "
+        f"{description_text or ''}"
+    ).lower()
     return any(_contains_word(keyword, text) for keyword in KIDS_KEYWORDS)
 
 
-def _product_department(
+def product_department(
     title: str, category: str | None, shopify_tags: list[str], vendor: str | None
 ) -> str | None:
     text = f"{title} {category or ''} {' '.join(shopify_tags)} {vendor or ''}".lower()
@@ -396,8 +406,8 @@ def map_shopify_product(
             logger.debug("Skipping product with no image: %s", title)
             return None
 
-        is_kids = _is_kids_apparel(title, category, shopify_tags, vendor)
-        department = _product_department(title, category, shopify_tags, vendor)
+        is_kids = is_kids_apparel(title, category, shopify_tags, vendor, description_text)
+        department = product_department(title, category, shopify_tags, vendor)
         colors = extract_colors(shopify_product)
         sizes = extract_sizes(shopify_product)
         color_images = extract_color_images(shopify_product)

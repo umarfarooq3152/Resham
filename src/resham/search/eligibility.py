@@ -71,10 +71,21 @@ def _product_matches_age(row: ProductRow, child_age_months: int) -> bool:
 
 
 async def _variant_eligible_product_ids(
-    session: AsyncSession, product_ids: list[UUID], filters: EligibilityFilters
+    session: AsyncSession,
+    product_ids: list[UUID],
+    filters: EligibilityFilters,
+    text_derived_colors: dict[UUID, str | None],
 ) -> set[UUID]:
     """Return the subset of product_ids with at least one available variant
-    that simultaneously satisfies color, size, and price."""
+    that simultaneously satisfies color, size, and price.
+
+    `text_derived_colors` (product_id -> a color extracted from
+    title/tags/description at ingest, see product_semantics.py) is used
+    only as a fallback when a variant has no merchant-set color at all —
+    ~57% of in-stock products in the live catalog fall in this bucket and
+    would otherwise be unreachable by any color-filtered search regardless
+    of their actual color. It never overrides a real variant color.
+    """
     if not product_ids:
         return set()
 
@@ -98,7 +109,8 @@ async def _variant_eligible_product_ids(
             if variant_size != requested_size:
                 continue
         if filters.color:
-            if not variant.color or not colors_match(filters.color, variant.color):
+            effective_color = variant.color or text_derived_colors.get(variant.product_id)
+            if not effective_color or not colors_match(filters.color, effective_color):
                 continue
         matching_ids.add(variant.product_id)
 
@@ -147,7 +159,10 @@ async def eligible_products(
         ]
 
     if filters.color or filters.size or filters.budget_min is not None or filters.budget_max is not None:
-        eligible_ids = await _variant_eligible_product_ids(session, [r.id for r in rows], filters)
+        text_derived_colors = {r.id: r.text_derived_color for r in rows}
+        eligible_ids = await _variant_eligible_product_ids(
+            session, [r.id for r in rows], filters, text_derived_colors
+        )
         rows = [r for r in rows if r.id in eligible_ids]
 
     return rows

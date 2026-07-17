@@ -19,6 +19,7 @@ from resham.catalog.content_hash import compute_content_hash
 from resham.catalog.freshness import on_product_missing, on_product_seen
 from resham.catalog.mapper import MappedProduct
 from resham.config import get_settings
+from resham.db.models.brand import Brand
 from resham.db.models.product import Product as ProductRow
 from resham.db.models.product_variant import ProductVariant as VariantRow
 from resham.nlp.keyword_matcher import tag_product
@@ -103,6 +104,14 @@ async def upsert_brand_products(
     settings = get_settings()
     stats = UpsertStats(mapped=len(mapped_products))
 
+    # Ground truth, curated per-brand (seed/brands.json), for the ~38% of
+    # products where the title/category/tags alone name no gender word at
+    # all — a single-gender brand's product IS that gender, not a guess,
+    # and this was previously hard-excluding those products from every
+    # department-filtered search.
+    brand = await session.get(Brand, brand_id)
+    brand_department = brand.department if brand else "unisex"
+
     existing_rows_result = await session.execute(
         select(ProductRow).where(ProductRow.brand_id == brand_id)
     )
@@ -118,6 +127,9 @@ async def upsert_brand_products(
         occasion = tagged.occasion or None
         tags = tagged.tags
         product_family = tagged.semantics.product_family if tagged.semantics else None
+        text_derived_color = tagged.semantics.text_derived_color if tagged.semantics else None
+        product_tradition = tagged.semantics.product_tradition if tagged.semantics else None
+        product_formality = tagged.semantics.product_formality if tagged.semantics else None
 
         content_hash = compute_content_hash(mapped, occasion, tags)
 
@@ -140,10 +152,13 @@ async def upsert_brand_products(
         row.description_text = mapped.description_text
         row.category = mapped.category
         row.product_family = product_family
+        row.text_derived_color = text_derived_color
+        row.product_tradition = product_tradition
+        row.product_formality = product_formality
         row.vendor = mapped.vendor
         row.shopify_tags = mapped.shopify_tags
         row.tags = tags
-        row.department = mapped.department
+        row.department = mapped.department or brand_department
         row.is_kids = mapped.is_kids
         row.age_ranges_months = [list(r) for r in mapped.age_ranges_months]
         row.occasion = occasion

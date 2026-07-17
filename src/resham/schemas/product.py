@@ -9,6 +9,9 @@ class ProductSemantics(BaseModel):
 
     version: str = "catalog-semantic-v1"
     product_family: Optional[str] = None
+    text_derived_color: Optional[str] = None
+    product_tradition: Optional[str] = None
+    product_formality: Optional[str] = None
     audiences: list[str] = Field(default_factory=list)
     occasions: list[str] = Field(default_factory=list)
     attributes: list[str] = Field(default_factory=list)
