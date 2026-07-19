@@ -51,6 +51,15 @@ services:
       REDIS_URL: redis://redis:6379/0
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
+    volumes:
+      # Chroma's DefaultEmbeddingFunction downloads a ~80MB ONNX model to
+      # this path on first use. Without a persisted volume it lives in the
+      # container's writable layer and is silently wiped on every image
+      # rebuild — on this network that download runs at ~30-70 KB/s, so a
+      # rebuild turned "first embedding of the day" into a multi-hour hang
+      # with 0% CPU and no error, easy to mistake for a deadlock. Shared
+      # with worker below so either process warms it for both.
+      - resham_model_cache:/home/resham/.cache/chroma
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -72,6 +81,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
+    volumes:
+      - resham_model_cache:/home/resham/.cache/chroma
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -82,3 +93,4 @@ services:
 volumes:
   resham_postgres_data:
   resham_chroma_data:
+  resham_model_cache:
