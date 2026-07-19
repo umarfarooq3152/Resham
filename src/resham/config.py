@@ -49,11 +49,30 @@ class Settings(BaseSettings):
 
     # Crawler / worker
     crawl_interval_hours: float = 4.0
-    crawl_concurrency: int = 4
+    # Lowered from 4: this bounds how many brands crawl *concurrently*, but
+    # concurrency alone doesn't stop a burst — see crawl_stagger_*_seconds,
+    # the actual fix for hitting many Cloudflare-protected storefronts
+    # within seconds of each other.
+    crawl_concurrency: int = 2
     crawl_missing_grace_cycles: int = 2  # consecutive misses before a product is marked OOS
     shopify_products_per_page: int = 250
     shopify_max_pages_per_brand: int = 50
     shopify_request_timeout_seconds: float = 10.0
+    # Random delay range before each brand's crawl starts, so ~25 brands
+    # spread across ~15-20 minutes instead of firing in one burst (measured:
+    # 25 brands with no staggering completed in 39s and got 24/25 rate
+    # limited — a request rate that fast across that many different
+    # Cloudflare-protected domains reads as bot/scraper traffic to shared
+    # IP-reputation heuristics, even though each individual site only saw
+    # one request).
+    crawl_stagger_min_seconds: float = 20.0
+    crawl_stagger_max_seconds: float = 60.0
+    # Retry/backoff for a single Shopify page fetch that hit a 429/5xx/
+    # timeout — Retry-After is honored when Shopify/Cloudflare sends one;
+    # otherwise this is the exponential-backoff base and cap.
+    shopify_max_retries: int = 3
+    shopify_retry_base_seconds: float = 2.0
+    shopify_retry_max_seconds: float = 30.0
 
     # CORS
     frontend_origin: str = "http://localhost:3000"

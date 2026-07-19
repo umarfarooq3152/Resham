@@ -7,6 +7,7 @@ at request time.
 
 import asyncio
 import logging
+import random
 from typing import Any
 
 import aiohttp
@@ -22,6 +23,8 @@ BROWSER_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
 
+_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
 
 class ShopifyFetchError(Exception):
     """A page request failed (rate limit, 5xx, timeout, network error) —
@@ -33,59 +36,139 @@ class ShopifyFetchError(Exception):
     row for that brand."""
 
 
+def _parse_retry_after(value: str | None) -> float | None:
+    """Retry-After is nearly always a plain integer seconds count from
+    Shopify/Cloudflare; the HTTP-date form is technically legal but never
+    observed in practice, so it's treated as absent rather than parsed."""
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        return None
+
+
 class ShopifyClient:
     """Async HTTP client for Shopify's public products JSON endpoint."""
 
-    def __init__(self, timeout: int = 30):
+    def __init__(
+        self,
+        timeout: int = 30,
+        *,
+        max_retries: int = 3,
+        retry_base_seconds: float = 2.0,
+        retry_max_seconds: float = 30.0,
+        sleep_fn=asyncio.sleep,
+    ):
         """Initialize Shopify client.
 
         Args:
             timeout: Request timeout in seconds
+            max_retries: Retries per page fetch on 429/5xx/timeout/network
+                error before giving up on this brand for the current cycle.
+            retry_base_seconds: Exponential backoff base when the server
+                gives no Retry-After header.
+            retry_max_seconds: Cap on any single wait, whether computed via
+                backoff or read from a (misbehaving, very long) Retry-After.
+            sleep_fn: Injectable for tests — real callers always use the
+                default asyncio.sleep.
         """
         self.timeout = timeout
+        self._max_retries = max_retries
+        self._retry_base_seconds = retry_base_seconds
+        self._retry_max_seconds = retry_max_seconds
+        self._sleep = sleep_fn
+        # One session per client (one per crawl run, see orchestrator.py) —
+        # reused across every brand/page instead of a fresh TCP+TLS
+        # handshake per request, both cheaper and closer to how a real
+        # browser tab's connection behaves.
+        self._session: aiohttp.ClientSession | None = None
+
+    async def __aenter__(self) -> "ShopifyClient":
+        self._session = aiohttp.ClientSession(headers={"User-Agent": BROWSER_USER_AGENT})
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+
+    def _require_session(self) -> aiohttp.ClientSession:
+        if self._session is None:
+            raise RuntimeError("ShopifyClient must be used as an async context manager")
+        return self._session
 
     async def fetch_products(
         self, domain: str, limit: int = 250, page: int = 1
     ) -> dict[str, Any]:
-        """Fetch products from a Shopify storefront.
-
-        Args:
-            domain: Brand domain (e.g., 'limelight.pk')
-            limit: Max products per page (max 250)
-            page: One-indexed page number. Shopify's public products endpoint
-                supports page-based pagination; it does not include a cursor
-                in the response body.
+        """Fetch one page of products from a Shopify storefront, retrying
+        on a rate limit, transient server error, timeout, or network error.
 
         Returns:
             Response dict with a products list
 
         Raises:
-            aiohttp.ClientError: On network/HTTP errors
+            ShopifyFetchError: Every retry attempt was exhausted.
         """
         url = f"https://{domain}/products.json"
         params = {"limit": min(max(limit, 1), 250), "page": max(page, 1)}
+        session = self._require_session()
 
-        try:
-            headers = {"User-Agent": BROWSER_USER_AGENT}
-            async with aiohttp.ClientSession(headers=headers) as session:
+        attempt = 0
+        while True:
+            try:
                 async with session.get(url, params=params, timeout=self.timeout) as resp:
                     if resp.status == 200:
                         return await resp.json()
-                    elif resp.status == 404:
+                    if resp.status == 404:
                         logger.warning(f"Shopify endpoint not found for {domain}")
                         return {"products": []}
-                    else:
-                        logger.error(
-                            f"Shopify API error for {domain}: "
-                            f"status={resp.status}"
+                    if resp.status in _RETRYABLE_STATUSES and attempt < self._max_retries:
+                        wait = self._backoff_seconds(attempt, _parse_retry_after(resp.headers.get("Retry-After")))
+                        logger.warning(
+                            "Shopify API status=%d for %s (attempt %d/%d), retrying in %.1fs",
+                            resp.status, domain, attempt + 1, self._max_retries, wait,
                         )
-                        raise ShopifyFetchError(f"{domain} returned status={resp.status}")
-        except asyncio.TimeoutError as e:
-            logger.error(f"Timeout fetching products from {domain}")
-            raise ShopifyFetchError(f"Timeout fetching from {domain}") from e
-        except aiohttp.ClientError as e:
-            logger.error(f"Failed to fetch from {domain}: {e}")
-            raise ShopifyFetchError(f"Failed to fetch from {domain}: {e}") from e
+                        await self._sleep(wait)
+                        attempt += 1
+                        continue
+                    logger.error(f"Shopify API error for {domain}: status={resp.status}")
+                    raise ShopifyFetchError(f"{domain} returned status={resp.status}")
+            except asyncio.TimeoutError as e:
+                if attempt < self._max_retries:
+                    wait = self._backoff_seconds(attempt, None)
+                    logger.warning(
+                        "Timeout fetching from %s (attempt %d/%d), retrying in %.1fs",
+                        domain, attempt + 1, self._max_retries, wait,
+                    )
+                    await self._sleep(wait)
+                    attempt += 1
+                    continue
+                logger.error(f"Timeout fetching products from {domain}")
+                raise ShopifyFetchError(f"Timeout fetching from {domain}") from e
+            except aiohttp.ClientError as e:
+                if attempt < self._max_retries:
+                    wait = self._backoff_seconds(attempt, None)
+                    logger.warning(
+                        "Failed to fetch from %s (attempt %d/%d): %s, retrying in %.1fs",
+                        domain, attempt + 1, self._max_retries, e, wait,
+                    )
+                    await self._sleep(wait)
+                    attempt += 1
+                    continue
+                logger.error(f"Failed to fetch from {domain}: {e}")
+                raise ShopifyFetchError(f"Failed to fetch from {domain}: {e}") from e
+
+    def _backoff_seconds(self, attempt: int, retry_after: float | None) -> float:
+        """Retry-After (server-specified) wins when present; otherwise
+        exponential backoff with jitter, since a uniform/deterministic
+        delay pattern is itself a bot signal. Either way, capped so a
+        misbehaving header can't stall a whole crawl cycle."""
+        if retry_after is not None:
+            return min(retry_after, self._retry_max_seconds)
+        base = self._retry_base_seconds * (2**attempt)
+        jittered = base * random.uniform(1.0, 1.5)
+        return min(jittered, self._retry_max_seconds)
 
     async def fetch_all_products(
         self, domain: str, max_pages: int = 20, max_products: int | None = None

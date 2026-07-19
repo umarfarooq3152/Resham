@@ -8,6 +8,7 @@ exists for.
 
 import asyncio
 import logging
+import random
 import time
 from datetime import datetime, timezone
 from uuid import UUID
@@ -74,6 +75,18 @@ async def _crawl_one_brand(
     return run_brand
 
 
+def _stagger_delays(count: int, min_seconds: float, max_seconds: float) -> list[float]:
+    """Cumulative (not independent) per-brand start delays, so ~count brands
+    spread roughly evenly across the whole cycle instead of clustering
+    jittered-but-still-simultaneous starts near time zero."""
+    running_total = 0.0
+    delays: list[float] = []
+    for _ in range(count):
+        running_total += random.uniform(min_seconds, max_seconds)
+        delays.append(running_total)
+    return delays
+
+
 async def crawl_all(
     session_maker: async_sessionmaker,
     *,
@@ -98,14 +111,34 @@ async def crawl_all(
         crawl_run_id = run.id
         await session.commit()
 
-    client = ShopifyClient(timeout=int(settings.shopify_request_timeout_seconds))
     semaphore = asyncio.Semaphore(settings.crawl_concurrency)
 
-    async def _bounded(brand: Brand) -> CrawlRunBrand:
+    async def _bounded(brand: Brand, start_delay: float, client: ShopifyClient) -> CrawlRunBrand:
+        # Staggers each brand's crawl start across the whole cycle instead
+        # of every brand racing through the concurrency semaphore at once —
+        # concurrency alone doesn't prevent a burst, it only bounds how many
+        # requests are in flight at the same instant. Hitting ~25 different
+        # Cloudflare-protected storefronts within seconds of each other reads
+        # as bot/scraper traffic to shared IP-reputation heuristics even
+        # though each individual site only sees one request (observed: 25
+        # brands with no staggering finished in 39s, 24/25 rate limited).
+        await asyncio.sleep(start_delay)
         async with semaphore:
             return await _crawl_one_brand(session_maker, crawl_run_id, brand, client)
 
-    results = await asyncio.gather(*(_bounded(brand) for brand in brands))
+    cumulative_delays = _stagger_delays(
+        len(brands), settings.crawl_stagger_min_seconds, settings.crawl_stagger_max_seconds
+    )
+
+    async with ShopifyClient(
+        timeout=int(settings.shopify_request_timeout_seconds),
+        max_retries=settings.shopify_max_retries,
+        retry_base_seconds=settings.shopify_retry_base_seconds,
+        retry_max_seconds=settings.shopify_retry_max_seconds,
+    ) as client:
+        results = await asyncio.gather(
+            *(_bounded(brand, delay, client) for brand, delay in zip(brands, cumulative_delays))
+        )
 
     async with session_maker() as session:
         for run_brand in results:
