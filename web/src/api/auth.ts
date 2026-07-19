@@ -24,9 +24,3 @@ export async function login(email: string, password: string): Promise<AuthRespon
 export async function getMe(): Promise<AuthUser> {
   return api.get<AuthUser>('/auth/me');
 }
-
-export async function updateProfile(
-  updates: Partial<Pick<AuthUser, 'name' | 'preferred_size' | 'department'>>
-): Promise<AuthUser> {
-  return api.patch<AuthUser>('/auth/me', updates);
-}

@@ -16,7 +16,7 @@ import asyncio
 import logging
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from resham.catalog.mapper import is_kids_apparel, product_department
 from resham.catalog.product_view import row_to_pydantic_product

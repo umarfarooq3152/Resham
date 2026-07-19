@@ -109,20 +109,6 @@ _DESCRIPTOR_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("western", (r"\bwestern(?: wear)?\b",)),
 )
 
-# These labels materially constrain search and must never be accepted merely
-# because an LLM inferred them. They are retained only when the shopper used a
-# corresponding phrase in this turn (or when already persisted from an earlier
-# explicitly grounded turn).
-_STRICT_STYLE_LABELS = {
-    "formal",
-    "casual",
-    "semi formal",
-    "semi-formal",
-    "party",
-    "festive",
-    "traditional",
-}
-
 _STYLE_DESCRIPTORS = {
     "knitted",
     "embroidered",
@@ -402,22 +388,3 @@ def garment_search_terms(garment: str) -> list[str]:
     return [canonical, *_GARMENT_METADATA_ALIASES.get(canonical, ())]
 
 
-def ground_style_descriptors(text: str, provider_descriptors: list[str]) -> list[str]:
-    """Remove inferred hard styles and add explicit deterministic descriptors."""
-    explicit = extract_search_descriptors(text)
-    explicit_keys = {item.lower() for item in explicit}
-    grounded = []
-    for item in provider_descriptors:
-        key = item.lower().strip()
-        inferred_garments = extract_garment_descriptors(item)
-        if key in _STRICT_STYLE_LABELS and key not in explicit_keys:
-            continue
-        if inferred_garments and not any(
-            garment.lower() in explicit_keys for garment in inferred_garments
-        ):
-            continue
-        grounded.append(item)
-    for item in explicit:
-        if item.lower() not in {existing.lower().strip() for existing in grounded}:
-            grounded.append(item)
-    return grounded

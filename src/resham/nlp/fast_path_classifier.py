@@ -76,28 +76,6 @@ class FastPathMatch:
     show_more: bool = False
 
 
-def is_control_message(text: str) -> bool:
-    """True only for UI/session controls that do not require fashion semantics.
-
-    Product, occasion, vibe, typo, and free-form shopping interpretation belongs
-    to the LLM-first path. Deterministic handling remains for cheap state actions
-    such as greeting, show-more, removal, and explicit audience-only switches.
-    """
-    lower = text.lower().strip()
-    return bool(
-        GREETING_PATTERN.fullmatch(lower)
-        or lower.rstrip(".!?") in UNSURE_PHRASES
-        or _is_department_only_message(lower)
-        or any(phrase in lower for phrase in CHEAPER_PHRASES)
-        or any(phrase in lower for phrase in MORE_FORMAL_PHRASES)
-        or any(phrase in lower for phrase in MORE_CASUAL_PHRASES)
-        or any(phrase in lower for phrase in DIFFERENT_BRAND_PHRASES)
-        or any(phrase in lower for phrase in SHOW_MORE_PHRASES)
-        or _clear_filter_field(lower) is not None
-        or re.search(r"\b(?:without|remove)\s+[a-z][a-z -]*\b", lower)
-    )
-
-
 def _empty_diff(assistant_reply: str) -> IntentExtractionResult:
     return IntentExtractionResult(assistant_reply=assistant_reply, clarify=False)
 

@@ -165,15 +165,6 @@ _BY_NAME = {event.name: event for event in EVENTS}
 _NON_EXCLUSIVE_CONTEXTS = {"casual", "office"}
 
 
-@lru_cache(maxsize=512)
-def _phrase_pattern(phrase: str) -> re.Pattern[str]:
-    return re.compile(rf"(?<![a-z0-9]){re.escape(phrase.lower())}(?![a-z0-9])")
-
-
-def _contains_phrase(text: str, phrase: str) -> bool:
-    return _phrase_pattern(phrase).search(text) is not None
-
-
 @lru_cache(maxsize=256)
 def _phrases_pattern(phrases: tuple[str, ...]) -> re.Pattern[str] | None:
     if not phrases:
@@ -199,10 +190,6 @@ def extract_event(text: str) -> str | None:
             if re.search(rf"\b{re.escape(normalized_alias)}\b", normalized):
                 matches.append((len(normalized_alias), event.name))
     return max(matches, default=(0, None))[1]
-
-
-def is_known_event(name: str | None) -> bool:
-    return bool(name and name.lower() in _BY_NAME)
 
 
 def event_garments(name: str | None) -> tuple[str, ...]:

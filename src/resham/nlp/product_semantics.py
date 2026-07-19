@@ -168,7 +168,3 @@ def ensure_product_semantics(product: Product) -> Product:
     ):
         return enrich_product_semantics(product)
     return product
-
-
-def enrich_products_semantics(products: list[Product]) -> list[Product]:
-    return [enrich_product_semantics(product) for product in products]

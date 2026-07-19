@@ -36,18 +36,6 @@ function mapProduct(
   };
 }
 
-export async function toProduct(apiProduct: ApiProduct): Promise<Product> {
-  let brandNames: Record<string, string> = {};
-  try {
-    brandNames = await getBrandNameMap();
-  } catch (error) {
-    // Brand display names are optional decoration. Never discard a valid
-    // search result because that secondary endpoint is temporarily down.
-    console.warn('Brand names unavailable; using catalog slugs.', error);
-  }
-  return mapProduct(apiProduct, brandNames);
-}
-
 export async function toProducts(apiProducts: ApiProduct[]): Promise<Product[]> {
   let brandNames: Record<string, string> = {};
   try {
@@ -113,11 +101,6 @@ async function toSearchResult(response: ApiProductSearchResponse): Promise<Produ
 export async function searchProducts(params: ProductSearchParams = {}): Promise<ProductSearchResult> {
   const response = await api.get<ApiProductSearchResponse>(`/products/search?${buildSearchQuery(params)}`);
   return toSearchResult(response);
-}
-
-export async function fetchProduct(productId: string): Promise<Product> {
-  const response = await api.get<ApiProduct>(`/products/${encodeURIComponent(productId)}`);
-  return toProduct(response);
 }
 
 export async function fetchAlternatives(productId: string, limit = 4): Promise<Product[]> {

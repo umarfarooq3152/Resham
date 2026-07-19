@@ -98,14 +98,6 @@ export interface ApiCollection {
   sort_order: number;
 }
 
-export interface Collection {
-  id: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  image: string;
-}
-
 export interface Message {
   id: string;
   sender: 'user' | 'assistant';
@@ -123,7 +115,5 @@ export interface FilterChips {
   size?: string;
   age?: string;
 }
-
-export type Platform = 'desktop' | 'mobile';
 
 export type CurrentScreen = 'onboarding' | 'discovery' | 'chat' | 'detail';
