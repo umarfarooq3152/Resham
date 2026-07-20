@@ -24,7 +24,7 @@ body {
   box-shadow: 0 24px 70px rgba(70, 49, 30, 0.14);
 }
 
-.logo { margin-bottom: 28px; color: #7d321e; font-family: Georgia, "Times New Roman", serif; font-size: 36px; font-weight: 700; letter-spacing: -.04em; }
+.logo-image { width: 120px; height: auto; display: block; margin: 0 0 28px; }
 .eyebrow { margin: 0 0 8px; color: #8d3d24; font-size: 12px; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
 h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(32px, 7vw, 46px); line-height: 1.05; }
 .support-copy { margin: 18px 0 28px; color: #675b51; font-size: 16px; line-height: 1.65; }

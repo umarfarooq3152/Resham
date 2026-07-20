@@ -107,6 +107,9 @@ SHADE_ALIASES: dict[str, tuple[str, ...]] = {
 _BASIC_MODIFIERS = ("basic", "plain", "standard", "true", "regular")
 _LIGHT_MODIFIERS = ("light", "pale", "pastel", "soft")
 _DARK_MODIFIERS = ("dark", "deep")
+_BROAD_REQUEST_COLORS = {
+    "blue", "red", "green", "pink", "purple", "brown", "orange", "grey", "gray",
+}
 
 
 def _normalized(value: str) -> str:
@@ -195,10 +198,27 @@ def extract_color_options(text: str) -> list[str]:
 
 
 def colors_match(requested: str, available: str) -> bool:
-    """Match exact shade families; base blue does not match dark/light blue."""
+    """Match colors with broad base-color requests covering their shades.
+
+    A shopper asking for "blue" usually expects navy, denim, dusty blue, etc.
+    Specific shade requests stay precise: "navy blue" does not match every
+    blue product.
+    """
     requested_canonical = canonical_color(requested)
     available_canonical = canonical_color(available)
-    return bool(requested_canonical and requested_canonical == available_canonical)
+    if not requested_canonical or not available_canonical:
+        return False
+    if requested_canonical == available_canonical:
+        return True
+    if (
+        _normalized(requested) == requested_canonical
+        and requested_canonical in _BROAD_REQUEST_COLORS
+    ):
+        return (
+            available_canonical == requested_canonical
+            or available_canonical.endswith(f" {requested_canonical}")
+        )
+    return False
 
 
 def matching_color(requested: str, available_colors: list[str]) -> str | None:

@@ -48,7 +48,7 @@ _RELAXATION_ORDER: tuple[str, ...] = ("size", "color", "budget_max")
 # Deliberately excludes department/wants_kids/child_age_months (auto-
 # relaxing age could surface adult items on a "for my daughter" search) and
 # category (which has its own culturally-aware alternative path below).
-DEFAULT_RELAXABLE_FIELDS: frozenset[str] = frozenset({"size", "color", "budget_max"})
+DEFAULT_RELAXABLE_FIELDS: frozenset[str] = frozenset({"size", "color"})
 
 # Once the blended list reaches this size, no *further* tier is queried —
 # it does not truncate a tier already in progress, so a single loose tier
@@ -153,7 +153,7 @@ async def search_with_relaxation(
         products, occasion=occasion, category=category,
         dropped_occasion=False, dropped_category=False, dropped_filters=[],
     )
-    if blender.full:
+    if blender.found_first_hit:
         return _finish(blender, occasion, category)
 
     current_filters = filters
@@ -168,7 +168,7 @@ async def search_with_relaxation(
             products, occasion=None, category=category,
             dropped_occasion=True, dropped_category=False, dropped_filters=list(dropped),
         )
-        if blender.full:
+        if blender.found_first_hit:
             return _finish(blender, occasion, category)
 
     for field_name in _RELAXATION_ORDER:
@@ -183,7 +183,7 @@ async def search_with_relaxation(
             dropped_occasion="occasion" in dropped, dropped_category=False,
             dropped_filters=list(dropped),
         )
-        if blender.full:
+        if blender.found_first_hit:
             return _finish(blender, occasion, category)
 
     if not blender.found_first_hit and category and occasion:

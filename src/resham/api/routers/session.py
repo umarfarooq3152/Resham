@@ -12,6 +12,7 @@ from resham.db.connection import get_session
 from resham.llm.fallback import FallbackIntentProvider
 from resham.llm.gemini_provider import GeminiIntentProvider
 from resham.llm.groq_provider import GroqIntentProvider
+from resham.llm.lmstudio_provider import LMStudioIntentProvider
 from resham.repositories.chat_repo import ChatRepository
 from resham.repositories.device_repo import DeviceRepository
 from resham.repositories.events_repo import SessionEventRepository
@@ -28,13 +29,21 @@ router = APIRouter(prefix="/session", tags=["session"])
 # Providers/clients are stateless — safe to build once at import time and
 # reuse across requests, same as Dhaaga's session router.
 _settings = get_settings()
-_fallback_provider = FallbackIntentProvider(
-    primary=GeminiIntentProvider(_settings.gemini_api_key, _settings.gemini_model),
-    fallback=GroqIntentProvider(_settings.groq_api_key, _settings.groq_model),
-    primary_timeout_seconds=_settings.gemini_timeout_seconds,
-    fallback_timeout_seconds=_settings.groq_timeout_seconds,
-    primary_rate_limit_cooldown_seconds=_settings.gemini_rate_limit_cooldown_seconds,
-)
+if _settings.llm_provider.lower() == "lmstudio":
+    _fallback_provider = LMStudioIntentProvider(
+        _settings.lmstudio_base_url,
+        _settings.lmstudio_api_key,
+        _settings.lmstudio_model,
+        _settings.lmstudio_timeout_seconds,
+    )
+else:
+    _fallback_provider = FallbackIntentProvider(
+        primary=GeminiIntentProvider(_settings.gemini_api_key, _settings.gemini_model),
+        fallback=GroqIntentProvider(_settings.groq_api_key, _settings.groq_model),
+        primary_timeout_seconds=_settings.gemini_timeout_seconds,
+        fallback_timeout_seconds=_settings.groq_timeout_seconds,
+        primary_rate_limit_cooldown_seconds=_settings.gemini_rate_limit_cooldown_seconds,
+    )
 _chroma_collection = get_collection()
 
 if _settings.session_store_backend == "redis":

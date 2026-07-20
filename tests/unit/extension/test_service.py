@@ -19,6 +19,16 @@ def _query_result(*, first=None, all_rows=None, scalar=None):
     return result
 
 
+def _brand():
+    return Brand(
+        id=uuid4(),
+        name="Outfitters",
+        slug="outfitters",
+        domain="outfitters.com.pk",
+        department="unisex",
+    )
+
+
 @pytest.mark.asyncio
 async def test_search_scopes_shared_search_to_active_store_and_maps_contract():
     brand_id = uuid4()
@@ -103,6 +113,79 @@ async def test_unknown_store_is_rejected_before_intent_provider_call():
 
     assert caught.value.code == "UNSUPPORTED_STORE"
     provider.parse_intent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_category_search_without_collection_asks_for_collection_first():
+    brand = _brand()
+    session = AsyncMock()
+    session.execute.side_effect = [
+        _query_result(first=brand),
+        _query_result(scalar=1200),
+    ]
+    provider = AsyncMock()
+    provider.parse_intent.return_value = ExtensionIntent(category="t-shirt")
+    service = ExtensionSearchService(session, None, provider)
+    adult_result = SearchResult(
+        products=[MagicMock()],
+        total=1,
+        effective_occasion=None,
+        effective_category="t-shirt",
+        dropped_occasion=False,
+        dropped_category=False,
+    )
+    kids_result = SearchResult(
+        products=[],
+        total=0,
+        effective_occasion=None,
+        effective_category="t-shirt",
+        dropped_occasion=False,
+        dropped_category=False,
+    )
+
+    with patch("resham.extension.service.run_search", new=AsyncMock(side_effect=[adult_result, kids_result])):
+        response = await service.search("tshirts", "https://outfitters.com.pk")
+
+    assert response.products == []
+    assert response.notice == "Which collection should I search: men's, women's, or kids?"
+
+
+@pytest.mark.asyncio
+async def test_category_search_without_adult_matches_points_to_kids_collection():
+    brand = _brand()
+    session = AsyncMock()
+    session.execute.side_effect = [
+        _query_result(first=brand),
+        _query_result(scalar=1200),
+    ]
+    provider = AsyncMock()
+    provider.parse_intent.return_value = ExtensionIntent(category="polo", color="red")
+    service = ExtensionSearchService(session, None, provider)
+    adult_result = SearchResult(
+        products=[],
+        total=0,
+        effective_occasion=None,
+        effective_category="polo",
+        dropped_occasion=False,
+        dropped_category=False,
+    )
+    kids_result = SearchResult(
+        products=[MagicMock(), MagicMock()],
+        total=2,
+        effective_occasion=None,
+        effective_category="polo",
+        dropped_occasion=False,
+        dropped_category=False,
+    )
+
+    with patch("resham.extension.service.run_search", new=AsyncMock(side_effect=[adult_result, kids_result])):
+        response = await service.search("red polos", "https://outfitters.com.pk")
+
+    assert response.products == []
+    assert response.notice == (
+        "I couldn't find red polo in the adult section, but I found 2 in kids. "
+        "Do you want to see kids options?"
+    )
 
 
 @pytest.mark.parametrize(

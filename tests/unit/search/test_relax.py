@@ -28,7 +28,7 @@ async def test_dropped_filters_never_names_a_field_the_shopper_never_set():
 
     result = await search_with_relaxation(
         fake_search_once, filters, "eid",
-        occasion_is_hard=False, relaxable_fields=DEFAULT_RELAXABLE_FIELDS,
+        occasion_is_hard=False, relaxable_fields=frozenset({"budget_max"}),
     )
 
     assert result.products == [_row(1)]

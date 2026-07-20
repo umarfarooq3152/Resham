@@ -237,6 +237,7 @@ function renderResults(result: SearchResult | null): void {
 
 function assistantResultSummary(result: SearchResult): string {
   if (result.products.length === 0) {
+    if (result.notice) return result.notice;
     const understood = result.intent.category ? ` for ${result.intent.category}` : '';
     return `I understood the request${understood}, but couldn’t find an exact match in this store. Tell me which detail you want to change and I’ll keep digging.`;
   }

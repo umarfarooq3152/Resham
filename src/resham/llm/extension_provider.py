@@ -182,6 +182,12 @@ TOPIC_REFINEMENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+KIDS_CONFIRMATION_PATTERN = re.compile(
+    r"^(?:yes|yeah|yep|sure|ok(?:ay)?|show(?: me)?(?: them| kids)?|"
+    r"kids?|kid'?s|children'?s?|boys?|girls?)$",
+    re.IGNORECASE,
+)
+
 FIT_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("wide leg", (r"\bwide[ -]?leg(?:ged)?\b",)),
     ("boot cut", (r"\bboot[ -]?cut\b",)),
@@ -299,6 +305,15 @@ def deterministic_extension_intent(
     and resilient to provider outages.
     """
     normalized = " ".join(query.lower().replace("’", "'").split())
+    if (
+        previous
+        and previous.category
+        and previous.audience is None
+        and previous.wants_kids is None
+        and KIDS_CONFIRMATION_PATTERN.fullmatch(normalized.strip(" .!?"))
+    ):
+        return previous.model_copy(update={"wants_kids": True, "audience": None})
+
     category = extract_explicit_category(normalized)
     colors = extract_color_options(normalized)
     color = " or ".join(colors) if colors else None
@@ -463,7 +478,14 @@ def merge_intent_context(
         })
     child_age_months = extract_child_age_months(query)
     explicit_kids = is_kids_request(query)
-    if explicit_kids:
+    kids_confirmation = bool(
+        previous
+        and previous.category
+        and previous.audience is None
+        and previous.wants_kids is None
+        and KIDS_CONFIRMATION_PATTERN.fullmatch(" ".join(query.lower().split()).strip(" .!?"))
+    )
+    if explicit_kids or kids_confirmation:
         parsed = parsed.model_copy(update={
             "wants_kids": True,
             "child_age_months": child_age_months,
@@ -483,7 +505,7 @@ def merge_intent_context(
         grounded_updates["occasion"] = None
     if explicit_audience is None:
         grounded_updates["audience"] = None
-    if not explicit_kids:
+    if not explicit_kids and not kids_confirmation:
         grounded_updates["wants_kids"] = None
         grounded_updates["child_age_months"] = None
     if grounded_updates:
@@ -543,7 +565,7 @@ def merge_intent_context(
                 (field == "occasion" and explicit_event is not None)
                 or (field == "audience" and explicit_audience is not None)
                 or (field == "color" and explicit_color is not None)
-                or (field == "wants_kids" and explicit_kids)
+                or (field == "wants_kids" and (explicit_kids or kids_confirmation))
                 or (field == "child_age_months" and child_age_months is not None)
             )
             if (
@@ -559,7 +581,7 @@ def merge_intent_context(
             updates["audience"] = explicit_audience
         if explicit_color is not None:
             updates["color"] = explicit_color
-        if explicit_kids:
+        if explicit_kids or kids_confirmation:
             updates["wants_kids"] = True
             updates["child_age_months"] = child_age_months
             updates["audience"] = None

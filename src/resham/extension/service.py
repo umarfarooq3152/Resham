@@ -124,6 +124,24 @@ def _reason(intent: ExtensionIntent, *, relaxed_occasion: bool) -> str:
     return f"{', '.join(facts[:-1]).capitalize()}, and {facts[-1]}."
 
 
+def _intent_query_text(query: str, intent: ExtensionIntent) -> str:
+    normalized_query = re.sub(r"[^a-z0-9']+", " ", query.lower()).strip()
+    confirmation_only = re.fullmatch(
+        r"(?:yes|yeah|yep|sure|ok(?:ay)?|show(?: me)?(?: them| kids)?|"
+        r"kids?|kid'?s|children'?s?|boys?|girls?)",
+        normalized_query,
+    )
+    parts = [] if confirmation_only else [query.strip()]
+    for value in (intent.color, intent.category, intent.fit, intent.descriptive, intent.occasion):
+        if value and value.lower() not in query.lower():
+            parts.append(value)
+    if intent.audience:
+        parts.append(intent.audience)
+    if intent.wants_kids:
+        parts.append("kids")
+    return " ".join(part for part in parts if part)
+
+
 class ExtensionSearchService:
     def __init__(
         self,
@@ -170,6 +188,25 @@ class ExtensionSearchService:
                 )
             ).scalar_one()
         )
+
+    async def _count_matches(
+        self,
+        filters: EligibilityFilters,
+        *,
+        occasion: str | None,
+        query_text: str,
+        semantic_query: str,
+    ) -> int:
+        result = await run_search(
+            self._session,
+            self._collection,
+            filters,
+            occasion=occasion,
+            occasion_is_hard=False,
+            query_text=query_text,
+            semantic_query=semantic_query,
+        )
+        return len(result.products)
 
     async def _variants_by_product(
         self, product_ids: list[UUID]
@@ -227,13 +264,63 @@ class ExtensionSearchService:
         semantic_query = " ".join(
             part.strip() for part in (intent.fit or "", intent.descriptive or "") if part.strip()
         )
+        if intent.category and intent.audience is None and intent.wants_kids is None:
+            query_text = _intent_query_text(query, intent)
+            adult_count = await self._count_matches(
+                filters,
+                occasion=intent.occasion,
+                query_text=query_text,
+                semantic_query=semantic_query,
+            )
+            kids_filters = EligibilityFilters(
+                department=None,
+                wants_kids=True,
+                child_age_months=intent.child_age_months,
+                category=intent.category,
+                color=intent.color,
+                size=intent.size,
+                budget_min=intent.price_min,
+                budget_max=intent.price_max,
+                brands=[brand.slug],
+            )
+            kids_count = await self._count_matches(
+                kids_filters,
+                occasion=intent.occasion,
+                query_text=query_text,
+                semantic_query=semantic_query,
+            )
+            if adult_count == 0 and kids_count > 0:
+                notice = (
+                    f"I couldn't find {intent.color + ' ' if intent.color else ''}"
+                    f"{intent.category} in the adult section, but I found "
+                    f"{kids_count} in kids. Do you want to see kids options?"
+                )
+            else:
+                notice = "Which collection should I search: men's, women's, or kids?"
+            catalog_count = await self._catalog_count(brand.id)
+            return ExtensionSearchResponse(
+                intent=intent,
+                products=[],
+                notice=notice,
+                meta=ExtensionSearchMeta(
+                    storeDomain=_normalize_domain(brand.domain),
+                    fetchedCount=catalog_count,
+                    mappedCount=catalog_count,
+                    exactCount=0,
+                    catalogCapped=False,
+                    relaxed=False,
+                    relaxedFilters=[],
+                    durationMs=int((time.monotonic() - started) * 1000),
+                ),
+            )
+
         result = await run_search(
             self._session,
             self._collection,
             filters,
             occasion=intent.occasion,
             occasion_is_hard=False,
-            query_text=query,
+            query_text=_intent_query_text(query, intent),
             semantic_query=semantic_query,
         )
         selected = result.products[: self._result_limit]

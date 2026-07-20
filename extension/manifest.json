@@ -11,8 +11,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Search this store with Resham",
-    "default_popup": "popup.html"
+    "default_title": "Search this store with Resham"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://localhost:8000; img-src 'self' https: data:; style-src 'self'"

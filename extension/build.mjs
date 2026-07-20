@@ -15,6 +15,7 @@ async function copyStaticFiles() {
     cp(path.join(root, 'microphone.html'), path.join(dist, 'microphone.html')),
     cp(path.join(root, 'src/styles.css'), path.join(dist, 'popup.css')),
     cp(path.join(root, 'src/microphone.css'), path.join(dist, 'microphone.css')),
+    cp(path.join(root, '../web/src/assets/images/dhaaga-logo.png'), path.join(dist, 'dhaaga-logo.png')),
   ]);
 }
 

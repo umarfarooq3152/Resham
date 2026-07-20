@@ -65,6 +65,12 @@ QUERY_ALIASES: dict[str, list[str]] = {
     "daaku": ["kurta", "waistcoat", "shawl", "shalwar"],
     "daku": ["kurta", "waistcoat", "shawl", "shalwar"],
     "bandit": ["kurta", "waistcoat", "shawl", "shalwar"],
+    "tee": ["t-shirt", "t", "shirt", "tee", "tees"],
+    "tees": ["t-shirt", "t", "shirt", "tee", "tees"],
+    "tshirt": ["t-shirt", "t", "shirt", "tee", "tees"],
+    "tshirts": ["t-shirt", "t", "shirt", "tee", "tees"],
+    "t-shirt": ["t-shirt", "t", "shirt", "tee", "tees"],
+    "t-shirts": ["t-shirt", "t", "shirt", "tee", "tees"],
 }
 GENERIC_QUERY_WORDS = {
     "a", "an", "the", "for", "to", "like", "me", "my", "day",

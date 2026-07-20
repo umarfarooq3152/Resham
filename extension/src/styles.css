@@ -20,10 +20,10 @@
 * { box-sizing: border-box; }
 
 html, body {
-  width: 640px;
-  min-width: 640px;
-  height: 600px;
-  min-height: 600px;
+  width: 100vw;
+  min-width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
   margin: 0;
   overflow: hidden;
   background: var(--canvas);
@@ -31,7 +31,7 @@ html, body {
 }
 
 html.is-expanded,
-body.is-expanded { width: 800px; min-width: 800px; }
+body.is-expanded { width: 100vw; min-width: 100vw; }
 
 button, textarea { font: inherit; }
 button { cursor: pointer; }
@@ -71,7 +71,7 @@ textarea:focus-visible,
 }
 
 .brand-lockup { min-width: 0; display: flex; align-items: center; gap: 14px; }
-.logo { color: var(--emerald); font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; letter-spacing: -.04em; }
+.logo-image { width: 82px; height: auto; display: block; }
 .store-context { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .store-context.is-unsupported .store-dot { background: var(--danger); box-shadow: 0 0 0 3px #f8ded9; }
 .store-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #34805b; box-shadow: 0 0 0 3px #dfeee6; }
@@ -90,13 +90,13 @@ main { min-height: 0; flex: 1; background: var(--canvas); }
 .workspace {
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 272px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 28vw);
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   background: var(--canvas);
 }
 
-body.is-expanded .workspace { grid-template-columns: minmax(0, 1fr) 320px; }
+body.is-expanded .workspace { grid-template-columns: minmax(0, 1fr) minmax(380px, 30vw); }
 
 .products-pane {
   min-width: 0;
@@ -130,7 +130,7 @@ h2 { margin-bottom: 7px; font-size: 17px; line-height: 1.15; }
 .products-loading { padding-top: 4px; }
 .loading-line { height: 3px; overflow: hidden; margin-bottom: 12px; border-radius: 3px; background: #e7e1dd; }
 .loading-line span { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--emerald); animation: loading-sweep 1.1s ease-in-out infinite; }
-.product-skeletons, .product-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.product-skeletons, .product-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
 .product-skeleton { height: 226px; border: 1px solid #e5dfda; border-radius: 9px; background: linear-gradient(110deg, #eee9e5 25%, #f8f5f2 45%, #eee9e5 65%); background-size: 220% 100%; animation: shimmer 1.4s linear infinite; }
 
 .product-card {

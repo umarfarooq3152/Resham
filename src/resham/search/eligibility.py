@@ -76,6 +76,49 @@ def _product_matches_age(row: ProductRow, child_age_months: int) -> bool:
     return any(start <= child_age_months <= end for start, end in row.age_ranges_months)
 
 
+def _normalize_alias(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+async def _catalog_alias_terms(session: AsyncSession, filters: EligibilityFilters) -> list[str]:
+    """Learn store/category aliases from rows already mapped to this family.
+
+    Example: if Outfitters rows with product_family="t-shirt" commonly carry
+    Shopify category "TEES", then "tees" becomes a SQL prefilter term for
+    future t-shirt searches. This widens only the cheap DB prefilter; the
+    authoritative matches_garment_text check below still decides eligibility.
+    """
+    if not filters.category:
+        return []
+
+    canonical_terms = garment_search_terms(filters.category)
+    stmt = select(ProductRow.category, ProductRow.shopify_tags).where(
+        ProductRow.in_stock.is_(True),
+        ProductRow.removed_at.is_(None),
+        ProductRow.is_kids.is_(filters.wants_kids),
+        or_(*(ProductRow.product_family.ilike(f"%{term}%") for term in canonical_terms)),
+    )
+
+    if filters.brands or filters.excluded_brands:
+        stmt = stmt.join(Brand, Brand.id == ProductRow.brand_id)
+        if filters.brands:
+            stmt = stmt.where(Brand.slug.in_(filters.brands))
+        if filters.excluded_brands:
+            stmt = stmt.where(Brand.slug.notin_(filters.excluded_brands))
+
+    aliases: list[str] = []
+    for category, shopify_tags in (await session.execute(stmt.limit(500))).all():
+        values = [category or "", *(shopify_tags or [])]
+        for value in values:
+            normalized = _normalize_alias(str(value))
+            if not normalized:
+                continue
+            if any(term in normalized for term in canonical_terms):
+                aliases.append(normalized)
+
+    return list(dict.fromkeys(aliases))
+
+
 async def _variant_eligible_product_ids(
     session: AsyncSession,
     product_ids: list[UUID],
@@ -158,7 +201,10 @@ async def eligible_products(
         # match — the identical Python check below still runs on the
         # (now far smaller) result and remains the sole authority on
         # what's actually eligible.
-        search_terms = garment_search_terms(filters.category)
+        search_terms = [
+            *garment_search_terms(filters.category),
+            *await _catalog_alias_terms(session, filters),
+        ]
         stmt = stmt.where(
             or_(
                 *(ProductRow.product_family.ilike(f"%{term}%") for term in search_terms),

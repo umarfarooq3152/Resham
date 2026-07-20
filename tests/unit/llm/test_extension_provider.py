@@ -400,6 +400,25 @@ async def test_adult_garment_after_juniors_topic_does_not_keep_kids_filter():
     assert result.wants_kids is None
 
 
+@pytest.mark.parametrize("message", ["yes", "kid's", "kids", "show kids"])
+@pytest.mark.asyncio
+async def test_kids_confirmation_preserves_previous_category_and_color(message):
+    provider = GroqExtensionProvider("test-key", "test-model")
+    provider._complete = AsyncMock(
+        return_value='{"category":"polo","color":"red","size":null,'
+        '"priceMax":null,"priceMin":null,"descriptive":null,'
+        '"occasion":null,"audience":null,"wantsKids":null,"childAgeMonths":null}'
+    )
+    previous = ExtensionIntent(category="polo", color="red")
+
+    result = await provider.parse_intent(message, previous)
+
+    assert result.category == "polo"
+    assert result.color == "red"
+    assert result.wants_kids is True
+    assert result.audience is None
+
+
 @pytest.mark.parametrize(
     ("message", "expected"),
     [

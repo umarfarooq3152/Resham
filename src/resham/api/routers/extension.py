@@ -12,13 +12,22 @@ from resham.db.connection import get_session
 from resham.errors import ExternalServiceError
 from resham.extension.service import ExtensionSearchError, ExtensionSearchService
 from resham.llm.extension_provider import GroqExtensionProvider
+from resham.llm.lmstudio_provider import LMStudioExtensionProvider
 from resham.schemas.extension import ExtensionSearchRequest, ExtensionSearchResponse
 from resham.vectorstore.client import get_collection
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/extension", tags=["extension"])
 settings = get_settings()
-provider = GroqExtensionProvider(settings.groq_api_key, settings.groq_model)
+if settings.llm_provider.lower() == "lmstudio":
+    provider = LMStudioExtensionProvider(
+        settings.lmstudio_base_url,
+        settings.lmstudio_api_key,
+        settings.lmstudio_model,
+        settings.lmstudio_timeout_seconds,
+    )
+else:
+    provider = GroqExtensionProvider(settings.groq_api_key, settings.groq_model)
 
 
 async def get_extension_search_service(

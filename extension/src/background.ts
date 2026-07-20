@@ -3,10 +3,38 @@ import type { SearchResult, SessionSnapshot, ShoppingIntent, WorkerRequest, Work
 import { createError, getSupportedStore, isSafeProductUrl, normalizeBackendError } from './shared/validators';
 
 const activeRequests = new Map<string, AbortController>();
+const launchedStoreTabs = new Map<number, number>();
 
-async function activeTab(): Promise<chrome.tabs.Tab> {
+function isExtensionPage(url?: string): boolean {
+  return Boolean(url && url.startsWith(chrome.runtime.getURL('')));
+}
+
+function sourceTabIdFromUrl(url?: string): number | null {
+  if (!isExtensionPage(url)) return null;
+  try {
+    const sourceTabId = Number(new URL(url || '').searchParams.get('sourceTabId'));
+    return Number.isInteger(sourceTabId) && sourceTabId > 0 ? sourceTabId : null;
+  } catch {
+    return null;
+  }
+}
+
+async function activeTab(sender?: chrome.runtime.MessageSender): Promise<chrome.tabs.Tab> {
+  const senderSourceTabId = sourceTabIdFromUrl(sender?.tab?.url);
+  if (senderSourceTabId !== null) {
+    const sourceTab = await chrome.tabs.get(senderSourceTabId).catch(() => null);
+    if (sourceTab?.url) return sourceTab;
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw createError('UNSUPPORTED_PAGE', 'No active browser tab was found.');
+  if (isExtensionPage(tab.url) && tab.id !== undefined) {
+    const launchedFromTabId = launchedStoreTabs.get(tab.id);
+    if (launchedFromTabId !== undefined) {
+      const launchedFromTab = await chrome.tabs.get(launchedFromTabId).catch(() => null);
+      if (launchedFromTab?.url) return launchedFromTab;
+    }
+  }
   return tab;
 }
 
@@ -17,6 +45,7 @@ async function saveSnapshot(snapshot: SessionSnapshot): Promise<void> {
 async function searchProducts(
   requestId: string,
   query: string,
+  sender?: chrome.runtime.MessageSender,
   previousIntent?: ShoppingIntent | null,
 ): Promise<WorkerResponse> {
   const trimmed = query.trim();
@@ -25,7 +54,7 @@ async function searchProducts(
   }
 
   try {
-    const store = getSupportedStore((await activeTab()).url);
+    const store = getSupportedStore((await activeTab(sender)).url);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort('timeout'), SEARCH_TIMEOUT_MS);
     activeRequests.set(requestId, controller);
@@ -76,17 +105,17 @@ async function searchProducts(
   }
 }
 
-async function handleMessage(message: WorkerRequest): Promise<WorkerResponse> {
+async function handleMessage(message: WorkerRequest, sender?: chrome.runtime.MessageSender): Promise<WorkerResponse> {
   if (message.type === 'GET_ACTIVE_STORE') {
     try {
-      const store = getSupportedStore((await activeTab()).url);
+      const store = getSupportedStore((await activeTab(sender)).url);
       return { ok: true, store: { name: store.name, domain: store.domain } };
     } catch (error) {
       return { ok: false, error: error as ReturnType<typeof createError> };
     }
   }
   if (message.type === 'SEARCH_PRODUCTS') {
-    return searchProducts(message.requestId, message.query, message.previousIntent);
+    return searchProducts(message.requestId, message.query, sender, message.previousIntent);
   }
   if (message.type === 'CANCEL_SEARCH') {
     activeRequests.get(message.requestId)?.abort('cancelled');
@@ -107,6 +136,18 @@ chrome.runtime.onMessage.addListener((message: WorkerRequest, sender, sendRespon
     sendResponse({ ok: false, error: createError('INTERNAL_ERROR', 'Untrusted message sender.') });
     return false;
   }
-  void handleMessage(message).then(sendResponse);
+  void handleMessage(message, sender).then(sendResponse);
   return true;
+});
+
+chrome.action.onClicked.addListener(async (tab) => {
+  const sourceTabId = tab.id !== undefined ? `?sourceTabId=${tab.id}` : '';
+  const page = await chrome.tabs.create({ url: chrome.runtime.getURL(`popup.html${sourceTabId}`) });
+  if (page.id !== undefined && tab.id !== undefined) {
+    launchedStoreTabs.set(page.id, tab.id);
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  launchedStoreTabs.delete(tabId);
 });

@@ -399,7 +399,10 @@ def garment_search_terms(garment: str) -> list[str]:
     allows through), so it must never replace the Python check — only
     narrow what reaches it."""
     canonical = _normalized(garment)
-    return [canonical, *_GARMENT_METADATA_ALIASES.get(canonical, ())]
+    terms = [canonical, *_GARMENT_METADATA_ALIASES.get(canonical, ())]
+    if canonical == "t shirt":
+        terms.extend(("t-shirt", "tshirt", "tshirts", "tee", "tees"))
+    return list(dict.fromkeys(terms))
 
 
 def ground_style_descriptors(text: str, provider_descriptors: list[str]) -> list[str]:

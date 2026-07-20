@@ -13,11 +13,12 @@ def test_named_blue_shades_resolve_to_specific_families():
     assert extract_color("a royal blue kurta") == "bright blue"
 
 
-def test_base_blue_does_not_match_light_or_dark_shades():
+def test_plain_base_blue_matches_retail_blue_shades():
     assert colors_match("blue", "Blue")
-    assert not colors_match("blue", "Dark Blue")
-    assert not colors_match("blue", "Light Blue")
-    assert not colors_match("blue", "Navy")
+    assert colors_match("blue", "Dark Blue")
+    assert colors_match("blue", "Light Blue")
+    assert colors_match("blue", "Navy")
+    assert not colors_match("basic blue", "Navy")
 
 
 def test_explicit_shade_matches_its_named_family_only():
@@ -32,7 +33,7 @@ def test_pakistani_retail_shade_labels_are_classified_without_color_bleed():
     assert extract_color("bottle green formal") == "dark green"
     assert extract_color("indigo kurta") == "dark purple"
     assert colors_match("dark purple", "Indigo Blue")
-    assert not colors_match("blue", "Sapphire Blue")
+    assert colors_match("blue", "Sapphire Blue")
     assert not colors_match("blue", "Indigo")
 
 

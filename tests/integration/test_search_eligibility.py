@@ -415,13 +415,12 @@ async def test_relaxation_never_drops_a_field_the_caller_did_not_mark_relaxable(
 
 
 @pytest.mark.asyncio
-async def test_relaxation_blends_exact_matches_ahead_of_relaxed_ones_for_scrolling(
+async def test_relaxation_does_not_pad_exact_matches_with_relaxed_ones(
     db_session, test_brand
 ):
-    """The exact match must lead the feed (page 1), with the
-    size-relaxed match appended after it (later pages) rather than either
-    replacing the other — this is what lets scrolling past the exact
-    matches surface progressively broader ones instead of a hard wall."""
+    """If exact matches exist, keep the result set strict. A stated size,
+    color, or budget chip should not coexist with products that only match
+    after that same chip was silently loosened."""
     exact = _product(test_brand.id, "24", "Blue Kurta Exact", colors=["Blue"])
     await _add_and_flush(db_session, exact)
     await _add_and_flush(db_session, _variant(exact.id, "v1", color="Blue", size="M", price=3000))
@@ -441,11 +440,9 @@ async def test_relaxation_blends_exact_matches_ahead_of_relaxed_ones_for_scrolli
         relaxable_fields=frozenset({"size", "color", "budget_max"}),
     )
 
-    # No relaxation was needed to find the first match, so the reply-facing
-    # fields must say so even though a broader match rides along for scroll.
     assert relaxed.dropped_filters == []
     ids = [r.external_id for r in relaxed.products]
-    assert ids == ["24", "25"]
+    assert ids == ["24"]
 
 
 @pytest.mark.asyncio

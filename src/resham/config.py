@@ -13,10 +13,15 @@ class Settings(BaseSettings):
     database_echo: bool = False
 
     # LLM Providers
-    gemini_api_key: str
-    groq_api_key: str
+    llm_provider: str = "cloud"
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
     gemini_model: str = "gemini-3.1-flash-lite"
     groq_model: str = "llama-3.1-8b-instant"
+    lmstudio_base_url: str = "http://host.docker.internal:1234/v1"
+    lmstudio_api_key: str = "lm-studio"
+    lmstudio_model: str = "qwen/qwen3.5-9b"
+    lmstudio_timeout_seconds: float = 90.0
     gemini_timeout_seconds: float = 4.0
     groq_timeout_seconds: float = 6.0
     gemini_rate_limit_cooldown_seconds: float = 300.0
@@ -81,11 +86,13 @@ class Settings(BaseSettings):
         """Fail fast if critical secrets are missing."""
         required = [
             "database_url",
-            "gemini_api_key",
-            "groq_api_key",
             "redis_url",
             "jwt_secret_key",
         ]
+        if self.llm_provider.lower() == "lmstudio":
+            required.extend(["lmstudio_base_url", "lmstudio_model"])
+        else:
+            required.extend(["gemini_api_key", "groq_api_key"])
         missing = [key for key in required if not getattr(self, key)]
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
