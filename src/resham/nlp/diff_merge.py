@@ -21,13 +21,37 @@ def _deadline_from_urgency(urgency_days: int) -> date:
     return date.today() + timedelta(days=urgency_days)
 
 
+# Some style descriptors are mutually exclusive restatements, not additive
+# preferences — a shopper who says "western" after "eastern" changed their
+# mind, they don't now want both. Left as plain accumulation, a later
+# "eastern" only ever appended alongside a stale "western" already in the
+# list, and requested_tradition()/requested_formality() then had to guess
+# which one "wins" — real observed bug: that guess preferred "eastern"
+# unconditionally, so a later, explicit "western" request was silently
+# discarded in favor of a stale first mention.
+_EXCLUSIVE_STYLE_GROUPS: tuple[frozenset[str], ...] = (
+    frozenset({"eastern", "western", "fusion"}),
+    frozenset({"formal", "casual", "semi-formal", "party", "bridal"}),
+)
+
+
+def _drop_superseded_style_groups(prior: list[str], incoming: list[str]) -> list[str]:
+    incoming_lower = {item.lower().strip() for item in incoming}
+    result = prior
+    for group in _EXCLUSIVE_STYLE_GROUPS:
+        if group & incoming_lower:
+            result = [item for item in result if item.lower().strip() not in group]
+    return result
+
+
 def merge_session_state(
     current: SessionState, diff: IntentExtractionResult
 ) -> SessionState:
     """Merge an LLM/fast-path diff into the current session state.
 
     Rules (TDD §6):
-    - occasion/color_preference/size/budget_max: explicit new values overwrite.
+    - occasion/color_preference/size/budget_min/budget_max: explicit new
+      values overwrite.
     - style_descriptors/excluded: accumulate rather than overwrite *within
       the same topic* — a genuine topic change (occasion changes) resets
       style_descriptors along with deadline_date, since style words
@@ -58,6 +82,9 @@ def merge_session_state(
         style for style in prior_style_descriptors
         if style.lower().strip() not in removed_styles
     ]
+    prior_style_descriptors = _drop_superseded_style_groups(
+        prior_style_descriptors, diff.style_descriptors
+    )
 
     field_aliases = {
         "color": "color_preference",
@@ -68,6 +95,8 @@ def merge_session_state(
     cleared_constraint_fields = {
         field_aliases.get(field, field) for field in cleared
     }
+    if "budget" in cleared:
+        cleared_constraint_fields.add("budget_min")
     prior_hard = [
         field for field in current.hard_constraints
         if field not in cleared_constraint_fields
@@ -97,9 +126,19 @@ def merge_session_state(
             if diff.color_preference is not None
             else current.color_preference
         ),
+        # Explicit value > cleared > carry-forward: a fast-path match that
+        # both states a new budget_max and clears "budget" (see
+        # fast_path_classifier._match_cheaper) must have the new value win,
+        # not be wiped out by its own clear_fields entry.
+        budget_min=(
+            diff.budget_min if diff.budget_min is not None
+            else None if "budget" in cleared
+            else current.budget_min
+        ),
         budget_max=(
-            None if "budget" in cleared
-            else diff.budget_max if diff.budget_max is not None else current.budget_max
+            diff.budget_max if diff.budget_max is not None
+            else None if "budget" in cleared
+            else current.budget_max
         ),
         style_descriptors=_dedup(prior_style_descriptors + diff.style_descriptors),
         size=None if "size" in cleared else current.size if diff.size is None else diff.size,

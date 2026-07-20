@@ -37,7 +37,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 40
 
-_RELAXED_FIELD_LABELS = {"size": "size", "color": "color", "budget_max": "budget"}
+_RELAXED_FIELD_LABELS = {
+    "size": "size", "color": "color", "budget_max": "budget", "budget_min": "budget",
+}
 
 
 def _filters_from_state(state: SessionState) -> EligibilityFilters:
@@ -48,6 +50,7 @@ def _filters_from_state(state: SessionState) -> EligibilityFilters:
         category=state.category,
         color=state.color_preference,
         size=state.size,
+        budget_min=state.budget_min,
         budget_max=state.budget_max,
         brands=list(state.brands),
         excluded_brands=list(state.excluded),

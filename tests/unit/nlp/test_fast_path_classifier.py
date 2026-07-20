@@ -3,7 +3,13 @@
 import pytest
 
 from resham.nlp.kids_age import extract_child_age_months
-from resham.nlp.fast_path_classifier import classify, extract_department, is_kids_request
+from resham.nlp.fast_path_classifier import (
+    classify,
+    extract_budget_min,
+    extract_budget_range,
+    extract_department,
+    is_kids_request,
+)
 from resham.schemas.product import Product
 from resham.schemas.session import SessionState
 
@@ -292,3 +298,62 @@ def test_unsure_category_gets_a_formality_path():
     assert match is not None
     assert match.diff.clarify is True
     assert "understated" in match.diff.assistant_reply
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("more than 30000", 30000),
+        ("more then 30000", 30000),  # common typo, must still match
+        ("above 8k", 8000),
+        ("starting from 1 lakh", 100000),
+        ("at least 5000", 5000),
+    ],
+)
+def test_extract_budget_min_variants(text, expected):
+    assert extract_budget_min(text) == expected
+
+
+def test_extract_budget_range_between_phrasing():
+    assert extract_budget_range("between 20000 and 40000") == (20000, 40000)
+
+
+def test_extract_budget_range_is_order_independent():
+    # "Between 20k and 10k" still means (min=10000, max=20000) regardless of
+    # which number the shopper stated first.
+    assert extract_budget_range("between 20k and 10k") == (10000, 20000)
+
+
+def test_extract_budget_range_returns_none_pair_without_between():
+    assert extract_budget_range("under 5000") == (None, None)
+
+
+def test_bare_budget_min_phrase_alone_is_a_fast_path():
+    # Real bug: this branch used to require a category/style/occasion
+    # alongside the budget phrase — a bare "above 30000" fell through to
+    # the LLM even though it's an unambiguous structured search.
+    match = classify("above 30000", SessionState(), [])
+    assert match is not None
+    assert match.diff.budget_min == 30000
+    assert match.diff.budget_max is None
+    assert "None" not in match.diff.assistant_reply
+
+
+@pytest.mark.parametrize("text", ["western", "eastern"])
+def test_bare_style_only_message_reply_never_prints_none(text):
+    # Real bug: the old literal f-string reply printed the word "None" into
+    # the user-facing reply whenever category was absent, e.g. a bare style
+    # or budget-only refinement.
+    match = classify(text, SessionState(), [])
+    assert match is not None
+    assert "None" not in match.diff.assistant_reply
+
+
+def test_cheaper_diff_clears_budget_alongside_new_max(last_results):
+    # _match_cheaper now sets clear_fields=["budget"] so a previously stated
+    # budget_min (e.g. "above 30000") doesn't survive alongside the new,
+    # lower ceiling and produce an impossible min > max range.
+    match = classify("can you show cheaper ones?", SessionState(), last_results)
+    assert match is not None
+    assert match.diff.clear_fields == ["budget"]
+    assert match.diff.budget_max == 2000

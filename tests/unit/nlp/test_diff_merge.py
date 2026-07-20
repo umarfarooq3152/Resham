@@ -244,3 +244,59 @@ def test_clearing_a_field_also_clears_its_constraint_role():
 
     assert result.color_preference is None
     assert result.hard_constraints == ["department"]
+
+
+def test_new_tradition_style_drops_other_member_of_the_exclusive_group():
+    # Real bug: a shopper who said "western" then later "eastern" ended up
+    # with state containing both, and requested_tradition()/
+    # requested_formality() then arbitrarily preferred "eastern" regardless
+    # of which was actually said more recently.
+    current = SessionState(
+        occasion="wedding", style_descriptors=["formal", "western"]
+    )
+    diff = IntentExtractionResult(
+        occasion="wedding", style_descriptors=["eastern"], assistant_reply="ok"
+    )
+    result = merge_session_state(current, diff)
+
+    assert "eastern" in result.style_descriptors
+    assert "formal" in result.style_descriptors
+    assert "western" not in result.style_descriptors
+
+
+def test_new_formality_style_drops_other_member_of_the_exclusive_group():
+    current = SessionState(occasion="eid", style_descriptors=["casual"])
+    diff = IntentExtractionResult(
+        occasion="eid", style_descriptors=["formal"], assistant_reply="ok"
+    )
+    result = merge_session_state(current, diff)
+
+    assert result.style_descriptors == ["formal"]
+    assert "casual" not in result.style_descriptors
+
+
+def test_new_budget_max_wins_over_same_diff_clear_fields():
+    # The exact "_match_cheaper after a budget_min was set" scenario: a
+    # fast-path diff can state a new ceiling AND clear_fields=["budget"] in
+    # the same diff (drop the old floor, but the new ceiling must survive
+    # rather than being wiped out by its own clear_fields entry).
+    current = SessionState(budget_min=30000, budget_max=None)
+    diff = IntentExtractionResult(
+        budget_max=27000, clear_fields=["budget"], assistant_reply="ok"
+    )
+    result = merge_session_state(current, diff)
+
+    assert result.budget_max == 27000
+    assert result.budget_min is None
+
+
+def test_budget_min_and_budget_max_build_a_range_across_two_turns():
+    # Neither field should clobber the other when only one is stated per
+    # turn and there's no clear_fields involved — a shopper can build up a
+    # "between X and Y" range across two separate messages.
+    current = SessionState(budget_max=50000)
+    diff = IntentExtractionResult(budget_min=30000, assistant_reply="ok")
+    result = merge_session_state(current, diff)
+
+    assert result.budget_min == 30000
+    assert result.budget_max == 50000

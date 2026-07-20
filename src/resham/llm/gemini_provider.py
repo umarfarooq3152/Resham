@@ -30,6 +30,7 @@ Fields to extract (use null/empty when not present in THIS message — never gue
   second garment is only styling context ("jeans to wear with a black shirt"),
   use the first requested product, jeans.
 - color_preference: a single color mentioned (or null) — this OVERWRITES any prior color
+- budget_min: a minimum/floor price in PKR if mentioned (or null)
 - budget_max: a maximum price in PKR if mentioned (or null)
 - style_descriptors: fuzzy style words/phrases such as "elegant", "baggy",
   "knitted", or "not too flashy". Put garment names in category. These
@@ -50,7 +51,7 @@ budget, color, size, etc.), set clarify=false even if your reply also asks a
 follow-up question for more detail — partial extraction is still useful and
 must not be discarded.
 
-Be consultative, not just a search box: count how many of {occasion, budget_max,
+Be consultative, not just a search box: count how many of {occasion, budget_min, budget_max,
 color_preference, category or style_descriptors, size}
 are known after merging this message with the session context. If FEWER THAN 2
 are known, the query is too vague to narrow well — your reply should acknowledge

@@ -75,6 +75,7 @@ export interface SessionState {
   occasion: string | null;
   category: string | null;
   color_preference: string | null;
+  budget_min: number | null;
   budget_max: number | null;
   style_descriptors: string[];
   size: string | null;

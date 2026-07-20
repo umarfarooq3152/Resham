@@ -28,9 +28,28 @@ def test_pakistani_event_aliases_normalize_to_canonical_names():
         "school annual day": "sports day",
         "parent teacher meeting": "school function",
         "rukhsati outfit": "baraat",
+        "clothes for daaku day": "daaku day",
+        "outfit for dacoit day": "daaku day",
+        "i want to dress like a badmaash": "daaku day",
+        "gangster day at uni": "daaku day",
+        "all black day tomorrow": "black day",
+        "white out day": "white day",
+        "glow day outfit": "neon day",
+        "pyjama day at college": "pajama day",
+        "hawaiian day theme": "beach day",
+        "jeans day theme": "denim day",
+        "peshawari day dress": "pathani day",
+        "throwback day outfit": "retro day",
     }
     for query, expected in cases.items():
         assert extract_event(query) == expected
+
+
+def test_office_meeting_phrasing_resolves_to_office_occasion():
+    # Real bug report phrasing: "office" aliases didn't cover generic
+    # meeting/business-trip language, so a shopper describing an actual
+    # work trip got no occasion match at all.
+    assert extract_event("i have a meeting in london next week") == "office"
 
 
 def test_mehndi_accepts_colorful_festive_garment():

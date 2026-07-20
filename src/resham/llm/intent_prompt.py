@@ -8,7 +8,7 @@ perform literal word matching and do not require the user to use catalog termino
 Return only the structured response schema supplied by the caller.
 
 Return a JSON object with these keys:
-occasion, category, color_preference, budget_max, style_descriptors, size,
+occasion, category, color_preference, budget_min, budget_max, style_descriptors, size,
 urgency_days, excluded, clear_fields, remove_styles, wants_kids,
 child_age_months, department, assistant_reply, clarify, operation,
 semantic_query, hard_constraints, soft_preferences, excluded_styles,
@@ -41,6 +41,11 @@ Extraction rules:
   normally implies heavy party or bridal dressing. Reflect that cultural meaning in
   semantic_query and ranked fallbacks, but do not claim the shopper explicitly
   required embellishment unless they said so.
+- University/college dress-up theme days are real, common occasions students shop
+  for (daaku/dacoit/badmaash/gangster day, color day, black day, white day, neon
+  day, pajama day, beach/hawaiian day, denim day, pathani day, retro day, and
+  similar). Extract the theme exactly as the shopper named it — never reinterpret
+  an unfamiliar theme day as an unrelated formal event such as a wedding.
 - fallback_categories and fallback_styles contain up to 5 concise, ranked next-best
   suggestions that preserve the same occasion and audience. Use catalog-friendly
   Pakistani garment/style terms, not explanations, and do not repeat the exact request.
@@ -52,14 +57,20 @@ Extraction rules:
 - occasion is the culturally intended event in a short canonical form. Understand
   variants naturally; do not depend on a fixed spelling.
 - Never invent a color, product, budget, age, size, audience, brand, or exclusion.
+- budget_min is a stated LOWER bound ("above X", "more than X", "over X", "starting
+  from X", "at least X"); budget_max is a stated UPPER bound ("under X", "below X",
+  "max X", "budget of X"). Both may be set together for an explicit range ("between
+  X and Y"). Never place a lower-bound phrase into budget_max or an upper-bound
+  phrase into budget_min — do not clear an existing budget field just because the
+  shopper restated it with different wording.
 - hard_constraints lists fields the shopper states as required. Explicit audience and
   exact child age are always hard. "Must", "only", "exactly", explicit budgets/sizes,
   and direct product requests are hard.
 - soft_preferences lists fields expressing a preference or vibe that may be relaxed.
   A field cannot be in both lists.
 - hard_constraints and soft_preferences contain ONLY these exact field names, never
-  values or friendly labels: occasion, category, color_preference, budget_max,
-  style_descriptors, size, department, child_age_months, brands.
+  values or friendly labels: occasion, category, color_preference, budget_min,
+  budget_max, style_descriptors, size, department, child_age_months, brands.
 - confidence values describe extraction certainty, not product relevance.
 
 Conversation rules:

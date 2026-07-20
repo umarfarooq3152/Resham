@@ -11,6 +11,7 @@ class SessionState(BaseModel):
     occasion: Optional[str] = None
     category: Optional[str] = None
     color_preference: Optional[str] = None
+    budget_min: Optional[int] = None
     budget_max: Optional[int] = None
     style_descriptors: list[str] = Field(default_factory=list)
     size: Optional[str] = None
@@ -41,6 +42,7 @@ ConstraintField = Literal[
     "occasion",
     "category",
     "color_preference",
+    "budget_min",
     "budget_max",
     "style_descriptors",
     "size",
@@ -67,6 +69,7 @@ class IntentExtractionResult(BaseModel):
     occasion: Optional[str] = None
     category: Optional[str] = None
     color_preference: Optional[str] = None
+    budget_min: Optional[int] = None
     budget_max: Optional[int] = None
     style_descriptors: list[str] = Field(default_factory=list)
     size: Optional[str] = None
@@ -113,6 +116,8 @@ class IntentExtractionResult(BaseModel):
         aliases = {
             "color": "color_preference", "colour": "color_preference",
             "budget": "budget_max", "price": "budget_max",
+            "max_budget": "budget_max", "min_budget": "budget_min",
+            "minimum_budget": "budget_min", "maximum_budget": "budget_max",
             "style": "style_descriptors", "material": "style_descriptors",
             "fit": "style_descriptors", "audience": "department",
             "gender": "department", "age": "child_age_months",
@@ -120,7 +125,7 @@ class IntentExtractionResult(BaseModel):
             "product_type": "category",
         }
         allowed = {
-            "occasion", "category", "color_preference", "budget_max",
+            "occasion", "category", "color_preference", "budget_min", "budget_max",
             "style_descriptors", "size", "department", "child_age_months",
             "brands",
         }

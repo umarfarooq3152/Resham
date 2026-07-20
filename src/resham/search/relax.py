@@ -39,7 +39,7 @@ SearchOnce = Callable[[EligibilityFilters, str | None], Awaitable[list[ProductRo
 
 # Priority order for automatic peeling — least disposable last, so a stated
 # budget survives longer than size or color before it's the one relaxed.
-_RELAXATION_ORDER: tuple[str, ...] = ("size", "color", "budget_max")
+_RELAXATION_ORDER: tuple[str, ...] = ("size", "color", "budget_max", "budget_min")
 
 # The fields every caller offers to the ladder by default — the same set
 # already exposed as manual "Any size / Any color / Any budget" relax chips
@@ -48,7 +48,7 @@ _RELAXATION_ORDER: tuple[str, ...] = ("size", "color", "budget_max")
 # Deliberately excludes department/wants_kids/child_age_months (auto-
 # relaxing age could surface adult items on a "for my daughter" search) and
 # category (which has its own culturally-aware alternative path below).
-DEFAULT_RELAXABLE_FIELDS: frozenset[str] = frozenset({"size", "color", "budget_max"})
+DEFAULT_RELAXABLE_FIELDS: frozenset[str] = frozenset({"size", "color", "budget_max", "budget_min"})
 
 # Once the blended list reaches this size, no *further* tier is queried —
 # it does not truncate a tier already in progress, so a single loose tier
@@ -86,6 +86,8 @@ def _clear(filters: EligibilityFilters, field_name: str) -> EligibilityFilters:
         return replace(filters, color=None)
     if field_name == "budget_max":
         return replace(filters, budget_max=None)
+    if field_name == "budget_min":
+        return replace(filters, budget_min=None)
     return filters
 
 

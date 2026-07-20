@@ -100,6 +100,7 @@ function buildPaginationQuery(state: SessionState | null): Parameters<typeof sea
     tags: state?.style_descriptors?.length ? state.style_descriptors : undefined,
     wantsKids: Boolean(state?.wants_kids),
     childAgeMonths: state?.child_age_months ?? undefined,
+    minPrice: state?.budget_min ?? undefined,
     maxPrice: state?.budget_max ?? undefined,
   };
 }
