@@ -127,3 +127,11 @@ class ProductSearchResponse(BaseModel):
         default=False,
         description="True if more results available on next page",
     )
+
+
+class VisualSearchResponse(ProductSearchResponse):
+    """The one Gemini-derived query used for image search, kept inspectable."""
+
+    query: str
+    category: Optional[str] = None
+    color: Optional[str] = None

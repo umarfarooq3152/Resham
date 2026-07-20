@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resetSession as resetSessionApi, sendSessionMessage } from '../api/session';
-import { searchProducts } from '../api/products';
+import { searchProducts, searchProductsByImage } from '../api/products';
 import { FilterChips, Message, Product, SessionState } from '../types';
 
 const DEFAULT_FILTERS: FilterChips = {
@@ -81,6 +81,7 @@ interface UseSessionChatResult {
   isLoadingMore: boolean;
   hasMoreResults: boolean;
   sendMessage: (text: string) => void;
+  searchByImage: (image: File) => void;
   loadMore: () => void;
   resetSession: () => void;
 }
@@ -213,6 +214,45 @@ export function useSessionChat(
       });
   }, [hasMoreResults, isLoadingMore, isProductsLoading]);
 
+  const searchByImage = useCallback((image: File) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    setMessages((prev) => [...prev, {
+      id: nextMessageId('user'), sender: 'user',
+      text: `Searching from image: ${image.name}`, timestamp: nowStr(),
+    }]);
+    setIsChatLoading(true);
+    setIsProductsLoading(true);
+
+    searchProductsByImage(image, department)
+      .then((result) => {
+        setFilteredProducts(result.items);
+        setTotalResults(result.total);
+        setHasMoreResults(result.items.length < result.total);
+        pageRef.current = 1;
+        setMessages((prev) => [...prev, {
+          id: nextMessageId('assistant'), sender: 'assistant',
+          text: result.total
+            ? `I found ${result.total} match${result.total === 1 ? '' : 'es'} for a ${result.query}.`
+            : "I couldn't find a close catalog match for that image yet.",
+          timestamp: nowStr(),
+        }]);
+      })
+      .catch((error) => {
+        console.error('Visual search failed:', error);
+        setMessages((prev) => [...prev, {
+          id: nextMessageId('error'), sender: 'assistant',
+          text: "I couldn't analyze that image. Please try a JPEG, PNG, or WebP under 8 MB.",
+          timestamp: nowStr(),
+        }]);
+      })
+      .finally(() => {
+        requestInFlightRef.current = false;
+        setIsChatLoading(false);
+        setIsProductsLoading(false);
+      });
+  }, [department]);
+
   const resetSession = useCallback(() => {
     const welcomeMessage: Message = {
       id: 'welcome',
@@ -313,6 +353,7 @@ export function useSessionChat(
     isLoadingMore,
     hasMoreResults,
     sendMessage,
+    searchByImage,
     loadMore,
     resetSession,
   };

@@ -23,7 +23,7 @@ function describeBudget(budgetMax: number | null | undefined): string {
 }
 
 function normalizeFilters(response: ChatTurnResponse): SessionMessageResult['filters'] {
-  const serverFilters = response.filters ?? {};
+  const serverFilters: Partial<SessionMessageResult['filters']> = response.filters ?? {};
   const state = response.session_state;
   const styles = state.style_descriptors ?? [];
   return {

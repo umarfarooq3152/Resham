@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Mic, Send, ArrowLeft, Sparkles, SlidersHorizontal, Eye, RefreshCw, Compass, Heart } from 'lucide-react';
+import { Search, Mic, Send, ArrowLeft, Sparkles, SlidersHorizontal, Eye, RefreshCw, Compass, Heart, ImagePlus } from 'lucide-react';
 import { Product } from '../types';
 import { useSessionChat } from '../hooks/useSessionChat';
 import { useVoiceRecording } from '../hooks/useVoiceRecording';
@@ -99,7 +99,7 @@ export default function ChatSearchScreen({
   }, []);
 
   const [inputText, setInputText] = useState('');
-  const { messages, filteredProducts, totalResults, filters, isChatLoading, isProductsLoading, isLoadingMore, hasMoreResults, sendMessage, loadMore, resetSession } =
+  const { messages, filteredProducts, totalResults, filters, isChatLoading, isProductsLoading, isLoadingMore, hasMoreResults, sendMessage, searchByImage, loadMore, resetSession } =
     useSessionChat(userName, department, initialQuery, initialFilters);
   const [searchPhase, setSearchPhase] = useState('Understanding your request…');
 
@@ -119,6 +119,7 @@ export default function ChatSearchScreen({
   const [isSheetExpanded, setIsSheetExpanded] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll chat to bottom
   const scrollToBottom = () => {
@@ -172,6 +173,12 @@ export default function ChatSearchScreen({
     } else {
       startRecording();
     }
+  };
+
+  const handleImageSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const image = event.target.files?.[0];
+    event.target.value = '';
+    if (image) searchByImage(image);
   };
 
   const removeFilter = (key: keyof typeof filters) => {
@@ -585,6 +592,13 @@ export default function ChatSearchScreen({
                   ) : (
                     <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
                       <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleImageSelected}
+                        className="hidden"
+                      />
+                      <input
                         type="text"
                         value={inputText}
                         disabled={isChatLoading}
@@ -592,6 +606,16 @@ export default function ChatSearchScreen({
                         placeholder="Type message..."
                         className="flex-1 bg-[#FCF9F8] border border-gray-200 focus:border-[#003224] focus:ring-0 rounded-full py-2.5 px-4 text-xs font-sans outline-none"
                       />
+                      <button
+                        type="button"
+                        onClick={() => imageInputRef.current?.click()}
+                        disabled={isChatLoading}
+                        aria-label="Search with an image"
+                        title="Search with an image"
+                        className="p-2.5 rounded-full bg-gray-100 text-[#003224] hover:bg-gray-200 disabled:opacity-50"
+                      >
+                        <ImagePlus className="w-4 h-4" />
+                      </button>
                       <button
                         type="button"
                         onClick={handleMicClick}
@@ -762,6 +786,13 @@ export default function ChatSearchScreen({
 
             <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
               <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleImageSelected}
+                className="hidden"
+              />
+              <input
                 type="text"
                 value={inputText}
                 disabled={isChatLoading}
@@ -769,6 +800,16 @@ export default function ChatSearchScreen({
                 placeholder="Ask Dhaaga AI... e.g. show under 30k"
                 className="flex-1 bg-[#FCF9F8] border border-gray-200 focus:border-[#003224] focus:ring-0 rounded-full py-2.5 px-4.5 text-xs sm:text-sm font-sans outline-none transition-all"
               />
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={isChatLoading}
+                aria-label="Search with an image"
+                title="Search with an image"
+                className="p-2.5 rounded-full bg-gray-100 text-[#003224] hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <ImagePlus className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              </button>
               <button
                 type="button"
                 onClick={handleMicClick}

@@ -1,23 +1,26 @@
 """Stored-catalog product endpoints used by the web frontend."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resham.catalog.product_view import row_to_pydantic_product
+from resham.config import get_settings
 from resham.db.connection import get_session
 from resham.db.models.brand import Brand
 from resham.db.models.product import Product as ProductRow
 from resham.db.models.product_variant import ProductVariant as VariantRow
 from resham.repositories.product_repo import ProductRepository
-from resham.schemas.product import Product, ProductSearchResponse
+from resham.schemas.product import Product, ProductSearchResponse, VisualSearchResponse
 from resham.search.eligibility import EligibilityFilters
 from resham.search.relax import DEFAULT_RELAXABLE_FIELDS
 from resham.search.service import build_query_text
 from resham.search.service import search as run_search
 from resham.vectorstore.client import get_collection
+from resham.vision.query import describe_search_image
 
 router = APIRouter(prefix="/products", tags=["products"])
+MAX_VISUAL_SEARCH_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 def get_vector_collection():
@@ -28,6 +31,61 @@ def _paginate(rows: list[ProductRow], page: int, page_size: int) -> tuple[list[P
     start = (page - 1) * page_size
     end = start + page_size
     return rows[start:end], end < len(rows)
+
+
+@router.post("/visual-search", response_model=VisualSearchResponse)
+async def visual_search_products(
+    image: UploadFile = File(...),
+    department: str | None = Query(None, pattern="^(men|women|unisex)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    vector_collection=Depends(get_vector_collection),
+) -> VisualSearchResponse:
+    """Search from a reference image using exactly one image-to-text call.
+
+    The resulting text is passed through the normal catalog eligibility and
+    ranking pipeline; this endpoint does not create a second image index.
+    """
+    mime_type = (image.content_type or "").lower()
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Upload a JPEG, PNG, or WebP image.")
+    image_bytes = await image.read(MAX_VISUAL_SEARCH_IMAGE_BYTES + 1)
+    if not image_bytes or len(image_bytes) > MAX_VISUAL_SEARCH_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be between 1 byte and 8 MB.")
+
+    settings = get_settings()
+    intent = await describe_search_image(
+        image_bytes,
+        mime_type=mime_type,
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_vision_model,
+    )
+    if intent is None:
+        raise HTTPException(
+            status_code=502, detail="The image could not be analyzed. Please try again."
+        )
+
+    result = await run_search(
+        session,
+        vector_collection,
+        EligibilityFilters(department=department, category=intent.category, color=intent.color),
+        occasion=None,
+        query_text=intent.query,
+        semantic_query=intent.query,
+        relaxable_fields=DEFAULT_RELAXABLE_FIELDS,
+    )
+    page_rows, has_more = _paginate(result.products, page, page_size)
+    return VisualSearchResponse(
+        items=[row_to_pydantic_product(row) for row in page_rows],
+        total=result.total,
+        page=page,
+        page_size=page_size,
+        has_more=has_more,
+        query=intent.query,
+        category=intent.category,
+        color=intent.color,
+    )
 
 
 @router.get("/search", response_model=ProductSearchResponse)
@@ -89,15 +147,15 @@ async def get_product(
     # Explicit queries, not the lazy `row.variants`/no ORM brand relationship
     # — see product_view.py's row_to_pydantic_product docstring.
     variants = list(
-        (
-            await session.execute(select(VariantRow).where(VariantRow.product_id == row.id))
-        )
+        (await session.execute(select(VariantRow).where(VariantRow.product_id == row.id)))
         .scalars()
         .all()
     )
     brand = await session.get(Brand, row.brand_id)
 
-    return row_to_pydantic_product(row, variants=variants, brand_domain=brand.domain if brand else None)
+    return row_to_pydantic_product(
+        row, variants=variants, brand_domain=brand.domain if brand else None
+    )
 
 
 @router.get("/{product_id}/alternatives", response_model=ProductSearchResponse)
