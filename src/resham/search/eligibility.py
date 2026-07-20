@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resham.db.models.brand import Brand
@@ -48,6 +48,18 @@ SIZE_ALIASES = {
 def normalize_size(value: str) -> str:
     compact = re.sub(r"[^A-Z0-9]+", "", value.upper())
     return SIZE_ALIASES.get(compact, compact)
+
+
+def _normalized_sql(column):
+    """SQL-side mirror of nlp.garments._normalized (lower + punctuation to
+    single spaces). garment_search_terms() returns Python-normalized terms
+    (e.g. "t-shirt" -> "t shirt"); comparing that against a RAW, un-
+    normalized column via plain ILIKE was the bug here — "%t shirt%" never
+    matches a real "T-Shirt" title, since the hyphen was never stripped
+    from the column side. Normalizing both sides identically is what
+    actually makes the SQL pre-filter a safe superset of
+    matches_garment_text's regex, not just look like one."""
+    return func.regexp_replace(func.lower(func.coalesce(column, "")), r"[^a-z0-9]+", " ", "g")
 
 
 @dataclass
@@ -161,10 +173,10 @@ async def eligible_products(
         search_terms = garment_search_terms(filters.category)
         stmt = stmt.where(
             or_(
-                *(ProductRow.product_family.ilike(f"%{term}%") for term in search_terms),
-                *(ProductRow.category.ilike(f"%{term}%") for term in search_terms),
-                *(ProductRow.title.ilike(f"%{term}%") for term in search_terms),
-                *(ProductRow.vision_category.ilike(f"%{term}%") for term in search_terms),
+                *(_normalized_sql(ProductRow.product_family).like(f"%{term}%") for term in search_terms),
+                *(_normalized_sql(ProductRow.category).like(f"%{term}%") for term in search_terms),
+                *(_normalized_sql(ProductRow.title).like(f"%{term}%") for term in search_terms),
+                *(_normalized_sql(ProductRow.vision_category).like(f"%{term}%") for term in search_terms),
             )
         )
 

@@ -226,6 +226,25 @@ async def test_category_filter_matches_product_family(db_session, test_brand):
 
 
 @pytest.mark.asyncio
+async def test_category_filter_matches_a_hyphenated_garment_word(db_session, test_brand):
+    """Real production bug: garment_search_terms("t-shirt") normalizes to
+    "t shirt" (space, not hyphen) for the SQL pre-filter — comparing that
+    against a raw, un-normalized title column meant "%t shirt%" never
+    matched a real "Paneled T-Shirt" title, silently returning zero
+    results for every hyphenated category. The SQL side must normalize
+    the column the same way, not just the search term."""
+    tee = _product(test_brand.id, "14", "Paneled T-Shirt", category="T-Shirts", product_family="t-shirt")
+    unrelated = _product(test_brand.id, "15", "Plain Kurta", category="Kurta", product_family="kurta")
+    await _add_and_flush(db_session, tee, unrelated)
+
+    rows = await eligible_products(db_session, _scoped(category="t-shirt"))
+
+    ids = {r.external_id for r in rows}
+    assert "14" in ids
+    assert "15" not in ids
+
+
+@pytest.mark.asyncio
 async def test_out_of_stock_and_removed_products_are_never_eligible(db_session, test_brand):
     from datetime import datetime, timezone
 
