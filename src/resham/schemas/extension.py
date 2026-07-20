@@ -68,6 +68,20 @@ class ExtensionMatchDetails(BaseModel):
     image_matches_color: bool | None = Field(default=None, alias="imageMatchesColor")
 
 
+class ExtensionVariantOut(BaseModel):
+    """A purchasable Shopify variant, for the popup's cart/add.js hand-off —
+    same purpose as schemas/product.py's ProductVariantOut, kept as a
+    separate model since the extension's wire contract is independently
+    versioned from the web Product API."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    variant_id: str = Field(alias="variantId")
+    color: str | None = None
+    size: str | None = None
+    available: bool
+
+
 class ExtensionProductResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -83,6 +97,7 @@ class ExtensionProductResult(BaseModel):
         default_factory=ExtensionMatchDetails,
         alias="matchDetails",
     )
+    variants: list[ExtensionVariantOut] = Field(default_factory=list)
 
 class ExtensionSearchMeta(BaseModel):
     model_config = ConfigDict(populate_by_name=True)

@@ -40,8 +40,33 @@ brand therefore requires no client release.
 - `activeTab`: reads the current tab URL only after the user opens the popup.
 - `storage`: keeps the current in-flight/result state in session storage so a
   text search can be recovered when the popup reopens.
+- `scripting`: lets the background worker inject a small script into the
+  active tab — used **only** for "Add to Cart" (see below), scoped by
+  `activeTab`'s temporary per-invocation grant, not a standing broad host
+  permission.
 - Backend host permission: transcription and search API requests only.
-- No content scripts, DOM access, cookies, history, checkout, or accounts.
+- No accounts, no browsing history access, no persistent DOM observation.
+
+### Add to Cart
+
+Resham has no checkout of its own — every crawled brand is a separate
+Shopify store with its own cart. Clicking "Add to Cart" on a product:
+
+1. Injects `cartAdd.js` into the active tab (already on that brand's own
+   storefront, per the extension's existing design) via
+   `chrome.scripting.executeScript`, triggered only by that click.
+2. Sends it exactly one same-origin `fetch('/cart/add.js', ...)` — Shopify's
+   standard, theme-independent Ajax cart endpoint. This is a normal
+   same-origin page request: the browser attaches the shopper's existing
+   session cookie automatically, and this code never reads or stores that
+   cookie's value.
+3. Reports success/failure back in the popup.
+
+This does not persist, observe, or modify the page beyond that one request,
+and does not run on page load — only on an explicit click. It also does not
+update the store's own on-page cart badge (that's theme-specific JS this
+extension doesn't chase); the popup's own confirmation is the signal, and
+completing checkout happens on the merchant's own site as normal.
 
 Microphone audio is recorded only while the popup remains open, sent to the
 backend/Groq for transcription, and not stored by Resham. Merchant product

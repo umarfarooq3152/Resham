@@ -1,5 +1,13 @@
 import { API_BASE_URL, SEARCH_TIMEOUT_MS, SESSION_KEY } from './config';
-import type { SearchResult, SessionSnapshot, ShoppingIntent, WorkerRequest, WorkerResponse } from './shared/contracts';
+import type {
+  ContentScriptMessage,
+  ContentScriptResponse,
+  SearchResult,
+  SessionSnapshot,
+  ShoppingIntent,
+  WorkerRequest,
+  WorkerResponse,
+} from './shared/contracts';
 import { createError, getSupportedStore, isSafeProductUrl, normalizeBackendError } from './shared/validators';
 
 const activeRequests = new Map<string, AbortController>();
@@ -76,6 +84,38 @@ async function searchProducts(
   }
 }
 
+async function addToCart(variantId: string, quantity: number): Promise<WorkerResponse> {
+  try {
+    const tab = await activeTab();
+    // getSupportedStore also confirms https + a real hostname before we
+    // ever inject anything into the tab.
+    getSupportedStore(tab.url);
+    if (tab.id === undefined) {
+      return { ok: false, error: createError('CART_ADD_FAILED', 'No active tab to add this to.') };
+    }
+
+    // Safe to call on every add — re-injecting an already-injected script
+    // is a no-op, not a duplicate listener (the listener replaces itself).
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['cartAdd.js'] });
+
+    const response = (await chrome.tabs.sendMessage(tab.id, {
+      type: 'CART_ADD',
+      variantId,
+      quantity,
+    } satisfies ContentScriptMessage)) as ContentScriptResponse;
+
+    if (!response.ok) {
+      return { ok: false, error: createError('CART_ADD_FAILED', response.error, true) };
+    }
+    return { ok: true, added: true };
+  } catch (error) {
+    const extensionError = error && typeof error === 'object' && 'code' in error
+      ? error as ReturnType<typeof createError>
+      : createError('CART_ADD_FAILED', 'Could not add that to your cart on this page.', true);
+    return { ok: false, error: extensionError };
+  }
+}
+
 async function handleMessage(message: WorkerRequest): Promise<WorkerResponse> {
   if (message.type === 'GET_ACTIVE_STORE') {
     try {
@@ -98,6 +138,9 @@ async function handleMessage(message: WorkerRequest): Promise<WorkerResponse> {
     }
     await chrome.tabs.create({ url: message.productUrl });
     return { ok: true, opened: true };
+  }
+  if (message.type === 'ADD_TO_CART') {
+    return addToCart(message.variantId, message.quantity);
   }
   return { ok: false, error: createError('INTERNAL_ERROR', 'Unknown extension message.') };
 }

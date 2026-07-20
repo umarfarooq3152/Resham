@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Heart, ShoppingBag, Truck, CheckCircle, ExternalLink, RefreshCw } from 'lucide-react';
-import { Product } from '../types';
-import { fetchAlternatives } from '../api/products';
+import { ArrowLeft, Heart, ShoppingBag, ShoppingCart, Truck, CheckCircle, ExternalLink, RefreshCw } from 'lucide-react';
+import { Product, ProductVariant } from '../types';
+import { fetchAlternatives, fetchProduct } from '../api/products';
 
 interface ProductDetailScreenProps {
   product: Product;
@@ -25,6 +25,50 @@ export default function ProductDetailScreen({
   const [selectedSize, setSelectedSize] = useState(product.sizes[0] || 'M');
   const isLiked = wishlist.includes(product.id);
   const [showRedirectNotice, setShowRedirectNotice] = useState(false);
+
+  // The list/search/session responses never include variants (kept lean by
+  // design — see schemas/product.py's Product.variants docstring), so the
+  // detail screen fetches its own full copy to get cart-add-ready variant
+  // ids + the merchant's storefront domain.
+  const [variants, setVariants] = useState<ProductVariant[]>(product.variants);
+  const [brandDomain, setBrandDomain] = useState<string | undefined>(product.brandDomain);
+  const [cartStatus, setCartStatus] = useState<'idle' | 'added'>('idle');
+
+  useEffect(() => {
+    let cancelled = false;
+    setVariants(product.variants);
+    setBrandDomain(product.brandDomain);
+    fetchProduct(product.id)
+      .then((full) => {
+        if (!cancelled) {
+          setVariants(full.variants);
+          setBrandDomain(full.brandDomain);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load product variants:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [product.id]);
+
+  const matchedVariant = variants.find(
+    (v) => (v.color ?? undefined) === selectedColor && (v.size ?? undefined) === selectedSize
+  );
+  const canAddToCart = Boolean(matchedVariant?.available && brandDomain);
+
+  const handleAddToCart = () => {
+    if (!matchedVariant || !brandDomain) return;
+    // Resham has no checkout of its own — this hands off to the merchant's
+    // real Shopify cart in a new tab so the shopper keeps their Dhaaga
+    // session. cart/add.js's non-AJAX GET form (cart/add?id=...) is used
+    // here since it's a full navigation, not a same-origin fetch.
+    const url = `https://${brandDomain}/cart/add?id=${encodeURIComponent(matchedVariant.variantId)}&quantity=1`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setCartStatus('added');
+    setTimeout(() => setCartStatus('idle'), 3000);
+  };
 
   // Check responsive size dynamically
   const [isMobile, setIsMobile] = useState(false);
@@ -142,9 +186,34 @@ export default function ProductDetailScreen({
   const actionButtons = (
     <div className="space-y-3 pt-4">
       <button
+        onClick={handleAddToCart}
+        disabled={!canAddToCart}
+        title={
+          !brandDomain
+            ? 'Loading availability…'
+            : !matchedVariant
+              ? 'Not available in this color/size combination'
+              : !matchedVariant.available
+                ? 'Out of stock in this combination'
+                : undefined
+        }
+        className="w-full bg-[#003224] text-[#FCF9F8] hover:bg-[#004B37] disabled:opacity-50 disabled:cursor-not-allowed rounded-full py-4 px-6 font-sans font-semibold text-sm transition-all flex items-center justify-center gap-2 tracking-wide shadow-[0_4px_12px_rgba(0,50,36,0.15)] cursor-pointer"
+      >
+        <ShoppingCart className="w-4 h-4" />
+        <span>
+          {cartStatus === 'added'
+            ? `Added — checkout on ${brandName}`
+            : canAddToCart
+              ? 'Add to Cart'
+              : matchedVariant
+                ? 'Out of Stock in This Combination'
+                : 'Select an Available Combination'}
+        </span>
+      </button>
+      <button
         onClick={handleRedirectAction}
         disabled={!product.productUrl}
-        className="w-full bg-[#003224] text-[#FCF9F8] hover:bg-[#004B37] disabled:opacity-50 disabled:cursor-not-allowed rounded-full py-4 px-6 font-sans font-semibold text-sm transition-all flex items-center justify-center gap-2 tracking-wide shadow-[0_4px_12px_rgba(0,50,36,0.15)] cursor-pointer"
+        className="w-full bg-white text-[#003224] border border-[#003224]/20 hover:border-[#003224] disabled:opacity-50 disabled:cursor-not-allowed rounded-full py-3.5 px-6 font-sans font-semibold text-sm transition-all flex items-center justify-center gap-2 tracking-wide cursor-pointer"
       >
         <ShoppingBag className="w-4 h-4" />
         <span>View on {brandName}</span>

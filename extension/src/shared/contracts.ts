@@ -11,6 +11,16 @@ export interface ShoppingIntent {
   wantsKids: boolean | null;
   childAgeMonths: number | null;
 }
+/** A purchasable Shopify variant, for the cart/add.js hand-off — Resham has
+ * no checkout of its own, so this is the real merchant variant id, distinct
+ * from ProductResult.id (Resham's own catalog key). */
+export interface ProductVariant {
+  variantId: string;
+  color: string | null;
+  size: string | null;
+  available: boolean;
+}
+
 export interface ProductResult {
   id: string;
   title: string;
@@ -28,6 +38,7 @@ export interface ProductResult {
     audience: string | null;
     imageMatchesColor: boolean | null;
   };
+  variants: ProductVariant[];
 }
 
 export interface SearchResult {
@@ -60,6 +71,7 @@ export type ErrorCode =
   | 'PROVIDER_UNAVAILABLE'
   | 'NO_MATCHES'
   | 'REQUEST_CANCELLED'
+  | 'CART_ADD_FAILED'
   | 'INTERNAL_ERROR';
 
 export interface ExtensionError {
@@ -72,14 +84,30 @@ export type WorkerRequest =
   | { type: 'GET_ACTIVE_STORE' }
   | { type: 'SEARCH_PRODUCTS'; requestId: string; query: string; previousIntent?: ShoppingIntent | null }
   | { type: 'CANCEL_SEARCH'; requestId: string }
-  | { type: 'OPEN_PRODUCT'; productUrl: string };
+  | { type: 'OPEN_PRODUCT'; productUrl: string }
+  | { type: 'ADD_TO_CART'; variantId: string; quantity: number };
 
 export type WorkerResponse =
   | { ok: true; data: SearchResult }
   | { ok: true; store: { name: string; domain: string } }
   | { ok: true; cancelled: true }
   | { ok: true; opened: true }
+  | { ok: true; added: true }
   | { ok: false; error: ExtensionError };
+
+/** Popup/background <-> injected content-script channel — separate from
+ * WorkerRequest/WorkerResponse above (popup <-> background only). Only
+ * fires on an explicit "Add to Cart" click; see extension/README.md's
+ * "Data and permissions" section for the full scope of what this touches. */
+export type ContentScriptMessage = {
+  type: 'CART_ADD';
+  variantId: string;
+  quantity: number;
+};
+
+export type ContentScriptResponse =
+  | { ok: true }
+  | { ok: false; error: string };
 
 export interface SessionSnapshot {
   requestId: string;

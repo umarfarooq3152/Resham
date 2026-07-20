@@ -22,6 +22,19 @@ class ProductSemantics(BaseModel):
     )
 
 
+class ProductVariantOut(BaseModel):
+    """One purchasable Shopify variant — the unit `cart/add.js` operates on.
+    `variant_id` is Shopify's own numeric variant id (distinct from
+    Product.id's composite catalog key), the only id a merchant's cart
+    endpoint accepts."""
+
+    variant_id: str
+    color: Optional[str] = None
+    size: Optional[str] = None
+    price: float
+    available: bool
+
+
 class Product(BaseModel):
     """Product data model — matches frontend expectations."""
 
@@ -72,6 +85,18 @@ class Product(BaseModel):
     image: str
     secondaryImage: Optional[str] = None
     product_url: str
+    variants: list[ProductVariantOut] = Field(
+        default_factory=list,
+        description=(
+            "Purchasable Shopify variants for cart hand-off. Populated only "
+            "by GET /products/{id} (the detail view) — search/collections/"
+            "session/wishlist responses leave this empty by design, to keep "
+            "list payloads lean."
+        ),
+    )
+    brand_domain: Optional[str] = Field(
+        None, description="Merchant storefront domain, for building a cart/add.js URL."
+    )
 
     class Config:
         json_schema_extra = {

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Search the current Shopify fashion store using natural language.",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": ["http://localhost:8000/*"],
   "background": {
     "service_worker": "background.js",

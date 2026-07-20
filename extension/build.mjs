@@ -37,10 +37,26 @@ const options = {
   logLevel: 'info',
 };
 
+// A separate build, not an extra entryPoints key: MV3 content scripts
+// injected via chrome.scripting.executeScript's `files` option don't
+// support top-level ESM the way the service worker (background.js) does,
+// so this one needs its own `format: 'iife'`.
+const contentScriptOptions = {
+  entryPoints: { cartAdd: path.join(root, 'src/content/cart-add.ts') },
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: 'chrome116',
+  outdir: dist,
+  entryNames: '[name]',
+  sourcemap: false,
+  logLevel: 'info',
+};
+
 if (watch) {
-  const ctx = await context(options);
-  await ctx.watch();
+  const [ctx, contentCtx] = await Promise.all([context(options), context(contentScriptOptions)]);
+  await Promise.all([ctx.watch(), contentCtx.watch()]);
   console.log('Watching Resham extension sources...');
 } else {
-  await build(options);
+  await Promise.all([build(options), build(contentScriptOptions)]);
 }

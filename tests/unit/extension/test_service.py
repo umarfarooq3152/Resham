@@ -86,6 +86,11 @@ async def test_search_scopes_shared_search_to_active_store_and_maps_contract():
     assert response.products[0].id == "outfitters:42"
     assert response.products[0].image_url == "https://cdn.example/blue.jpg"
     assert response.products[0].match_details.image_matches_color is True
+    # Real Shopify variant id, for the popup's cart/add.js hand-off — not
+    # the catalog's internal composite key.
+    assert [v.model_dump() for v in response.products[0].variants] == [
+        {"variant_id": "v1", "color": "Blue", "size": "M", "available": True}
+    ]
     assert response.meta.store_domain == "outfitters.com.pk"
     assert response.meta.fetched_count == 1200
     assert response.meta.catalog_capped is False

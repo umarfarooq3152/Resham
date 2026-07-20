@@ -33,7 +33,27 @@ function mapProduct(
     ageRangesMonths: apiProduct.age_ranges_months ?? [],
     liveVerified: apiProduct.live_verified ?? false,
     liveVerifiedAt: apiProduct.live_verified_at ?? undefined,
+    variants: (apiProduct.variants ?? []).map((v) => ({
+      variantId: v.variant_id,
+      color: v.color ?? undefined,
+      size: v.size ?? undefined,
+      price: v.price,
+      available: v.available,
+    })),
+    brandDomain: apiProduct.brand_domain ?? undefined,
   };
+}
+
+export async function toProduct(apiProduct: ApiProduct): Promise<Product> {
+  let brandNames: Record<string, string> = {};
+  try {
+    brandNames = await getBrandNameMap();
+  } catch (error) {
+    // Brand display names are optional decoration. Never discard a valid
+    // product because that secondary endpoint is temporarily down.
+    console.warn('Brand names unavailable; using catalog slugs.', error);
+  }
+  return mapProduct(apiProduct, brandNames);
 }
 
 export async function toProducts(apiProducts: ApiProduct[]): Promise<Product[]> {
@@ -101,6 +121,11 @@ async function toSearchResult(response: ApiProductSearchResponse): Promise<Produ
 export async function searchProducts(params: ProductSearchParams = {}): Promise<ProductSearchResult> {
   const response = await api.get<ApiProductSearchResponse>(`/products/search?${buildSearchQuery(params)}`);
   return toSearchResult(response);
+}
+
+export async function fetchProduct(productId: string): Promise<Product> {
+  const response = await api.get<ApiProduct>(`/products/${encodeURIComponent(productId)}`);
+  return toProduct(response);
 }
 
 export async function fetchAlternatives(productId: string, limit = 4): Promise<Product[]> {

@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from resham.catalog.product_view import row_to_pydantic_product
 from resham.db.connection import get_session
+from resham.db.models.brand import Brand
 from resham.db.models.product import Product as ProductRow
+from resham.db.models.product_variant import ProductVariant as VariantRow
 from resham.repositories.product_repo import ProductRepository
 from resham.schemas.product import Product, ProductSearchResponse
 from resham.search.eligibility import EligibilityFilters
@@ -83,7 +85,19 @@ async def get_product(
     row = await ProductRepository(session).get_by_composite_key(product_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    return row_to_pydantic_product(row)
+
+    # Explicit queries, not the lazy `row.variants`/no ORM brand relationship
+    # — see product_view.py's row_to_pydantic_product docstring.
+    variants = list(
+        (
+            await session.execute(select(VariantRow).where(VariantRow.product_id == row.id))
+        )
+        .scalars()
+        .all()
+    )
+    brand = await session.get(Brand, row.brand_id)
+
+    return row_to_pydantic_product(row, variants=variants, brand_domain=brand.domain if brand else None)
 
 
 @router.get("/{product_id}/alternatives", response_model=ProductSearchResponse)
