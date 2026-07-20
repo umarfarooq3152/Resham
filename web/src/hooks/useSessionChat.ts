@@ -9,6 +9,13 @@ const DEFAULT_FILTERS: FilterChips = {
   budget: 'All Budgets',
 };
 
+// A warm, open invitation rather than a checklist of required fields
+// ("tell me the occasion, fabric, price range...") — the shopper should
+// feel like they're starting a conversation, not filling out a form.
+function welcomeText(userName: string): string {
+  return `Assalam-o-Alaikum ${userName}! Welcome to Dhaaga — I'm here to help you find something beautiful across Pakistan's top fashion labels. What's on your mind today?`;
+}
+
 // Bump when server-side intent/session semantics change so an evaluator never
 // rehydrates a stale, polluted conversation from an older build.
 const CHAT_SNAPSHOT_KEY = 'dhaaga-chat-snapshot-v3';
@@ -210,7 +217,7 @@ export function useSessionChat(
     const welcomeMessage: Message = {
       id: 'welcome',
       sender: 'assistant',
-      text: `Assalam-o-Alaikum ${userName}. I am Dhaaga's AI Assistant. Tell me what celebratory moment you are dressing for, your preferred fabric, or a specific price range.`,
+      text: welcomeText(userName),
       timestamp: nowStr(),
     };
 
@@ -261,7 +268,7 @@ export function useSessionChat(
         {
           id: 'welcome',
           sender: 'assistant',
-          text: `Assalam-o-Alaikum ${userName}. I am Dhaaga's AI Assistant. Tell me what celebratory moment you are dressing for, your preferred fabric, or a specific price range.`,
+          text: welcomeText(userName),
           timestamp: nowStr(),
         },
       ]);

@@ -101,8 +101,8 @@ def classify(
         return FastPathMatch(
             diff=IntentExtractionResult(
                 assistant_reply=(
-                    "I'm doing well — thanks for asking! Tell me what you're shopping for, "
-                    "or start with a product, color, occasion, size, or budget."
+                    "I'm doing well — thanks for asking! What are you shopping for today, "
+                    "or is there an occasion you're dressing for? Happy to help however works for you."
                 ),
                 clarify=True,
             )
