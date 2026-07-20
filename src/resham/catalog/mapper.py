@@ -267,27 +267,79 @@ def extract_color_images(shopify_product: dict[str, Any]) -> dict[str, str]:
     if color_option_index is None:
         return {}
 
+    images = shopify_product.get("images", [])
     images_by_id = {
         str(image.get("id")): image.get("src", "")
-        for image in shopify_product.get("images", [])
+        for image in images
         if image.get("id") and image.get("src")
     }
     images_by_variant_id = {
         str(variant_id): image.get("src", "")
-        for image in shopify_product.get("images", [])
+        for image in images
         if image.get("src")
         for variant_id in (image.get("variant_ids") or [])
     }
     result: dict[str, str] = {}
+    colors_seen: set[str] = set()
     for variant in shopify_product.get("variants", []):
         color = str(variant.get(f"option{color_option_index}") or "").strip().lower()
+        if not color:
+            continue
+        colors_seen.add(color)
         featured = variant.get("featured_image") or {}
         src = featured.get("src") if isinstance(featured, dict) else None
         src = src or images_by_id.get(str(variant.get("image_id")))
         src = src or images_by_variant_id.get(str(variant.get("id")))
-        if color and src and color not in result:
+        if src and color not in result:
             result[color] = src
+
+    unmatched = colors_seen - result.keys()
+    if unmatched:
+        _fill_color_images_from_filenames(images, unmatched, result)
     return result
+
+
+def _normalize_for_match(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _fill_color_images_from_filenames(
+    images: list[dict[str, Any]], unmatched_colors: set[str], result: dict[str, str]
+) -> None:
+    """Fallback for stores that give zero structured variant<->image linkage
+    (observed on real listings: no featured_image, no image_id match, empty
+    variant_ids on every image) but spell the color out in the filename
+    itself, e.g. "WBC26E998_Fawn_4.jpg". Matches only against this product's
+    own declared color labels, not a global color vocabulary, so a match
+    can't drift onto a lookalike shade — it can only "find" a color this
+    exact product actually has.
+    """
+    remaining = {
+        color: normalized
+        for color in unmatched_colors
+        if len(normalized := _normalize_for_match(color)) >= 3
+    }
+    for image in images:
+        if not remaining:
+            return
+        src = image.get("src") or ""
+        if not src:
+            continue
+        stem = src.rsplit("/", 1)[-1].split("?", 1)[0]
+        stem = stem.rsplit(".", 1)[0] if "." in stem else stem
+        normalized_filename = _normalize_for_match(stem)
+        matched = [
+            color
+            for color, normalized in remaining.items()
+            if re.search(rf"\b{re.escape(normalized)}\b", normalized_filename)
+        ]
+        if matched:
+            # A filename spelling out more than one candidate (e.g. a group
+            # shot) picks the longest, most specific name rather than an
+            # ambiguous partial.
+            best = max(matched, key=len)
+            result[best] = src
+            del remaining[best]
 
 
 def extract_images(shopify_product: dict[str, Any]) -> tuple[str, str | None]:
