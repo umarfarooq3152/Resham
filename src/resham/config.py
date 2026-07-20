@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -95,6 +96,19 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = False
         extra = "ignore"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_async_database_url(cls, value: str) -> str:
+        """Railway's managed Postgres exposes a standard postgres URL while
+        SQLAlchemy's async engine requires the asyncpg dialect explicitly."""
+        if value.startswith("postgresql+asyncpg://"):
+            return value
+        if value.startswith("postgres://"):
+            return f"postgresql+asyncpg://{value.removeprefix('postgres://')}"
+        if value.startswith("postgresql://"):
+            return f"postgresql+asyncpg://{value.removeprefix('postgresql://')}"
+        return value
 
     def validate_required_secrets(self) -> None:
         """Fail fast if critical secrets are missing."""
