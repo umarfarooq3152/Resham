@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Mic, Send, ArrowLeft, Sparkles, SlidersHorizontal, Eye, RefreshCw, Compass, Heart, User, LogOut, ShieldCheck, LogIn } from 'lucide-react';
+import { Search, Mic, Send, ArrowLeft, Sparkles, SlidersHorizontal, Eye, RefreshCw, Compass, Heart } from 'lucide-react';
 import { Product } from '../types';
 import { useSessionChat } from '../hooks/useSessionChat';
 import { useVoiceRecording } from '../hooks/useVoiceRecording';
 import dhaagaLogo from '../assets/images/dhaaga-logo.png';
 import { AuthUser } from '../api/auth';
 import Loader from './Loader';
+import ProfileDropdown from './ProfileDropdown';
 
 interface ChatSearchScreenProps {
   userName: string;
@@ -21,6 +22,7 @@ interface ChatSearchScreenProps {
   authUser: AuthUser | null;
   onOpenAuth: () => void;
   onLogout: () => void;
+  onUpdateProfile: (updates: Partial<Pick<AuthUser, 'preferred_size' | 'department'>>) => Promise<void>;
 }
 
 // Beautiful Skeleton placeholders for high-fidelity loading experience
@@ -81,7 +83,8 @@ export default function ChatSearchScreen({
   onOpenWishlist,
   authUser,
   onOpenAuth,
-  onLogout
+  onLogout,
+  onUpdateProfile
 }: ChatSearchScreenProps) {
   // Check responsive size dynamically
   const [isMobile, setIsMobile] = useState(false);
@@ -114,7 +117,6 @@ export default function ChatSearchScreen({
 
   // Mobile sheet states
   const [isSheetExpanded, setIsSheetExpanded] = useState(true);
-  const [showProfile, setShowProfile] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -658,80 +660,12 @@ export default function ChatSearchScreen({
           <div className="h-4 w-px bg-gray-200 mx-1.5"></div>
 
           {/* User Profile Button */}
-          <div className="relative">
-            <button 
-              onClick={() => setShowProfile(!showProfile)}
-              className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center ${showProfile ? 'bg-gray-100 text-[#003224]' : 'text-gray-500 hover:text-[#003224]'}`}
-              title="My Profile"
-            >
-              <User className="w-4.5 h-4.5" />
-            </button>
-
-            <AnimatePresence>
-              {showProfile && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setShowProfile(false)}
-                  />
-                  
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                    transition={{ duration: 0.15, ease: 'easeOut' }}
-                    className="absolute right-0 mt-3 w-56 bg-white border border-gray-200/60 rounded-xl shadow-xl z-50 p-4 text-left font-sans"
-                  >
-                    {authUser ? (
-                      <>
-                        <div className="pb-3 border-b border-gray-100 mb-2">
-                          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-0.5">Account</p>
-                          <p className="font-serif text-sm font-bold text-gray-900 leading-snug">{authUser.name}</p>
-                          <p className="text-[10px] text-gray-500 truncate mt-0.5">{authUser.email}</p>
-                        </div>
-
-                        <div className="space-y-1 text-xs">
-                          <div className="flex items-center gap-2.5 py-2 px-2 rounded-lg text-gray-600">
-                            <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                            <span>Member</span>
-                          </div>
-                          <div
-                            onClick={() => {
-                              setShowProfile(false);
-                              onLogout();
-                            }}
-                            className="flex items-center gap-2.5 py-2 px-2 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer transition-colors mt-1.5 pt-2 border-t border-gray-100"
-                          >
-                            <LogOut className="w-4 h-4" />
-                            <span>Log Out</span>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="pb-3 border-b border-gray-100 mb-2">
-                          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-0.5">Account</p>
-                          <p className="text-xs text-gray-600 leading-snug">
-                            Log in to save your wishlist and preferences across devices.
-                          </p>
-                        </div>
-                        <div
-                          onClick={() => {
-                            setShowProfile(false);
-                            onOpenAuth();
-                          }}
-                          className="flex items-center gap-2.5 py-2 px-2 rounded-lg text-[#003224] font-bold hover:bg-gray-50 cursor-pointer transition-colors text-xs"
-                        >
-                          <LogIn className="w-4 h-4" />
-                          <span>Log In / Sign Up</span>
-                        </div>
-                      </>
-                    )}
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
+          <ProfileDropdown
+            authUser={authUser}
+            onOpenAuth={onOpenAuth}
+            onLogout={onLogout}
+            onUpdateProfile={onUpdateProfile}
+          />
         </div>
       </header>
 
