@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+from resham.nlp.garments import extract_primary_garment
 from resham.schemas.session import IntentExtractionResult, SessionState
 
 
@@ -19,6 +20,19 @@ def _dedup(items: list[str]) -> list[str]:
 
 def _deadline_from_urgency(urgency_days: int) -> date:
     return date.today() + timedelta(days=urgency_days)
+
+
+def _canonical_category(category: str) -> str:
+    """The fast-path already spell-corrects category through
+    extract_primary_garment before setting it, but the LLM path echoes the
+    shopper's own spelling verbatim (e.g. "lehnga") — a real observed bug:
+    that typo then never matches the catalog's "lehenga" text and silently
+    returns zero results. Route every diff through the same correction here,
+    the single place both paths merge into state, so it can't be bypassed.
+    Falls back to the raw value when nothing in the garment vocabulary is a
+    close enough match, rather than nulling out a value the LLM saw fit to
+    extract."""
+    return extract_primary_garment(category) or category
 
 
 # Some style descriptors are mutually exclusive restatements, not additive
@@ -119,7 +133,8 @@ def merge_session_state(
         ),
         category=(
             None if "category" in cleared
-            else diff.category if diff.category is not None else current.category
+            else _canonical_category(diff.category) if diff.category is not None
+            else current.category
         ),
         color_preference=(
             None if "color" in cleared else diff.color_preference

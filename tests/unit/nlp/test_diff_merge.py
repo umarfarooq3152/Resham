@@ -20,6 +20,24 @@ def test_fresh_session_takes_all_diff_fields():
     assert result.style_descriptors == ["elegant"]
 
 
+def test_llm_extracted_category_typo_is_spell_corrected():
+    # Real observed bug: the LLM path echoed the shopper's own spelling
+    # ("lehnga") verbatim into category, which then never matched the
+    # catalog's "lehenga" text and silently returned zero results — the
+    # fast path already ran extract_primary_garment and never had this bug.
+    current = SessionState()
+    diff = IntentExtractionResult(category="lehnga", assistant_reply="ok")
+    result = merge_session_state(current, diff)
+    assert result.category == "lehenga"
+
+
+def test_unrecognized_category_is_kept_verbatim_not_nulled():
+    current = SessionState()
+    diff = IntentExtractionResult(category="co-ord", assistant_reply="ok")
+    result = merge_session_state(current, diff)
+    assert result.category == "co-ord"
+
+
 def test_style_descriptors_accumulate_across_turns():
     current = SessionState(style_descriptors=["silk"])
     diff = IntentExtractionResult(style_descriptors=["elegant"], assistant_reply="ok")
