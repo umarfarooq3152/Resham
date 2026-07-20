@@ -47,5 +47,14 @@
       "tags": ["lawn", "cotton"]
     },
     "sort_order": 5
+  },
+  {
+    "title": "Kids Corner",
+    "subtitle": "For your little ones",
+    "description": "Everyday and festive styles for kids and toddlers, from newborn to pre-teen",
+    "filter_definition": {
+      "wants_kids": true
+    },
+    "sort_order": 6
   }
 ]
