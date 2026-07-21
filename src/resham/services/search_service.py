@@ -87,6 +87,7 @@ SEMANTIC_STOP_WORDS = GENERIC_QUERY_WORDS | {
 _CATEGORY_CHILDREN: dict[str, set[str]] = {
     "top": {"peplum top", "crop top", "tank top", "blouse", "tunic"},
     "dress": {"shirt dress", "wrap dress", "cocktail dress", "slip dress", "maxi", "gown"},
+    "shirt": {"t-shirt", "polo"},
     "trousers": {"cigarette pants", "palazzo"},
 }
 
@@ -325,6 +326,8 @@ def _core_matches_category(core_text: str, requested_category: str) -> bool:
         return True
     if not matches_garment_text(core_text, requested_category):
         return False
+    if canonical == "shirt":
+        return True
     if not explicit_families:
         return True
     return canonical in explicit_families

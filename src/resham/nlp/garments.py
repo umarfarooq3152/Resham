@@ -153,6 +153,10 @@ _GARMENT_METADATA_ALIASES: dict[str, tuple[str, ...]] = {
     "shoes": ("footwear", "oxford", "derby", "pump", "chappal"),
     "sweater": ("knitwear", "pullover", "jumper"),
     "sweatshirt": ("sweat shirt",),
+    "shirt": (
+        "t-shirt", "tshirt", "tee", "polo", "button down", "button-down",
+        "button front", "dress shirt", "office shirt", "oxford",
+    ),
     "jacket": ("outerwear", "bomber", "puffer"),
     "trousers": ("bottoms", "pants"),
     "top": ("fashion top", "eastern top", "western top"),

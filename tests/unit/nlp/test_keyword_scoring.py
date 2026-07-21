@@ -166,14 +166,20 @@ def test_color_filter_uses_matching_variant_image():
     assert result.items[0].image == "https://example.com/yellow.jpg"
 
 
-def test_generic_shirt_does_not_absorb_polos_or_tshirts():
+def test_generic_shirt_includes_common_shirt_subtypes():
     shirt = _product("brand-a", "1", "Oxford Shirt", 3000, category="Men Shirt")
     polo = _product("brand-b", "1", "Johnny Collar Polo", 3200, category="Polo Shirts")
     tee = _product("brand-c", "1", "Graphic T-Shirt", 1800, category="T-Shirts")
+    button_down = _product("brand-d", "1", "Button Down Oxford", 3600, category="Woven Tops")
+    dress = _product("brand-e", "1", "Summer Dress", 4200, category="Dresses")
 
-    result = SearchService.search([polo, tee, shirt], category="shirt", page_size=10)
+    result = SearchService.search(
+        [polo, tee, shirt, button_down, dress],
+        category="shirt",
+        page_size=10,
+    )
 
-    assert result.items == [shirt]
+    assert result.items == [shirt, polo, tee, button_down]
 
 
 def test_broad_top_keeps_real_top_subfamilies_but_not_unrelated_garments():

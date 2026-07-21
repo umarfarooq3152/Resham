@@ -297,6 +297,20 @@ async def test_bare_new_category_drops_copied_old_topic_constraints():
 
 
 @pytest.mark.asyncio
+async def test_bare_new_category_preserves_previous_adult_audience():
+    provider = GroqExtensionProvider("test-key", "test-model")
+    provider._complete = AsyncMock()
+    previous = ExtensionIntent(category="shirt", audience="men")
+
+    result = await provider.parse_intent("polos?", previous)
+
+    provider._complete.assert_not_awaited()
+    assert result.category == "polo"
+    assert result.audience == "men"
+    assert result.wants_kids is None
+
+
+@pytest.mark.asyncio
 async def test_new_topic_keeps_constraints_explicitly_repeated_in_new_message():
     provider = GroqExtensionProvider("test-key", "test-model")
     provider._complete = AsyncMock(

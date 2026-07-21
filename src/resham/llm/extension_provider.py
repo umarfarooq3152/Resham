@@ -548,7 +548,7 @@ def merge_intent_context(
             updates["category"] = None
         for field in (
             "color", "size", "fit", "price_max", "price_min", "descriptive",
-            "occasion", "audience", "wants_kids", "child_age_months",
+            "occasion", "wants_kids", "child_age_months",
         ):
             value = getattr(parsed, field)
             text_value_is_explicit = bool(
@@ -579,6 +579,8 @@ def merge_intent_context(
             updates["occasion"] = explicit_event
         if explicit_audience is not None:
             updates["audience"] = explicit_audience
+        elif previous.audience and not standalone_kids_topic and not explicit_kids and not kids_confirmation:
+            updates["audience"] = previous.audience
         if explicit_color is not None:
             updates["color"] = explicit_color
         if explicit_kids or kids_confirmation:

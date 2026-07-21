@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     extension_allowed_origins: str = ""
     extension_request_timeout_seconds: float = 25.0
     extension_rank_candidate_limit: int = 40
-    extension_result_limit: int = 40
+    # 0 means return the full matched set; the extension UI lazy-renders it in batches.
+    extension_result_limit: int = 0
 
     # Session cache (Redis holds only ephemeral chat/session state — no product cache)
     redis_url: str

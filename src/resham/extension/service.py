@@ -149,12 +149,12 @@ class ExtensionSearchService:
         collection: Collection | None,
         intent_provider: ExtensionIntentProvider,
         *,
-        result_limit: int = 40,
+        result_limit: int = 0,
     ):
         self._session = session
         self._collection = collection
         self._provider = intent_provider
-        self._result_limit = min(max(result_limit, 1), 40)
+        self._result_limit = max(result_limit, 0)
 
     async def _resolve_brand(self, domain: str) -> Brand:
         normalized = _normalize_domain(domain)
@@ -323,7 +323,7 @@ class ExtensionSearchService:
             query_text=_intent_query_text(query, intent),
             semantic_query=semantic_query,
         )
-        selected = result.products[: self._result_limit]
+        selected = result.products if self._result_limit == 0 else result.products[: self._result_limit]
         variants_by_product = await self._variants_by_product([row.id for row in selected])
         relaxed_occasion = result.dropped_occasion
 
