@@ -77,11 +77,13 @@ textarea:focus-visible,
 .store-context.is-unsupported .store-dot { background: var(--danger); box-shadow: 0 0 0 3px #f8ded9; }
 .store-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #34805b; box-shadow: 0 0 0 3px #dfeee6; }
 .header-actions { display: flex; align-items: center; gap: 7px; }
-.header-button, .square-button { border: 1px solid var(--line); background: var(--surface); color: var(--emerald); font-size: 10px; font-weight: 800; transition: border-color 180ms ease, background-color 180ms ease; }
+.header-button, .square-button, .icon-button { border: 1px solid var(--line); background: var(--surface); color: var(--emerald); font-size: 10px; font-weight: 800; transition: border-color 180ms ease, background-color 180ms ease; }
 .header-button { min-height: 34px; padding: 0 12px; border-radius: 999px; }
 .square-button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; }
-.header-button:hover, .square-button:hover { border-color: var(--emerald); background: var(--emerald-soft); }
-.square-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button { position: relative; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; }
+.header-button:hover, .square-button:hover, .icon-button:hover { border-color: var(--emerald); background: var(--emerald-soft); }
+.square-button svg, .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.count-badge { position: absolute; right: -3px; top: -4px; min-width: 15px; height: 15px; display: grid; place-items: center; padding: 0 4px; border-radius: 999px; background: var(--emerald); color: #fff; font-size: 7px; font-weight: 900; }
 .collapse-icon { display: none; }
 body.is-expanded .expand-icon { display: none; }
 body.is-expanded .collapse-icon { display: block; }
@@ -151,6 +153,11 @@ h2 { margin-bottom: 7px; font-size: 17px; line-height: 1.15; }
   cursor: pointer;
 }
 .product-card:hover { border-color: #857d77; box-shadow: 0 8px 18px rgba(42, 35, 31, .11); }
+.wishlist-toggle { position: absolute; right: 10px; top: 10px; z-index: 2; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.8); border-radius: 50%; background: rgba(255,255,255,.92); color: #5e6762; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.wishlist-toggle:hover { color: var(--danger); }
+.wishlist-toggle.is-saved { color: var(--danger); }
+.wishlist-toggle.is-saved svg { fill: currentColor; }
+.wishlist-toggle svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .product-media { width: 100%; height: 135px; display: grid; place-items: center; overflow: hidden; border-radius: 6px; background: #ece7e3; }
 .product-media img { width: 100%; height: 100%; object-fit: cover; }
 .product-media.is-lower-body img { object-position: center 72%; }
@@ -260,6 +267,40 @@ h2 { margin-bottom: 7px; font-size: 17px; line-height: 1.15; }
 .supported-store-note { margin: 11px 0 0; color: var(--muted); font-size: 8px; font-weight: 700; }
 .state-icon { width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 50%; background: var(--danger-soft); color: var(--danger); }
 .state-icon svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.state-icon.is-soft { background: var(--emerald-soft); color: var(--emerald); }
+
+.drawer-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(23, 35, 31, .32); }
+.wishlist-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 21;
+  width: min(390px, 100vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--surface-soft);
+  box-shadow: -16px 0 34px rgba(42, 35, 31, .16);
+  transform: translateX(100%);
+  transition: transform 180ms ease;
+}
+.wishlist-drawer.is-open { transform: translateX(0); }
+.drawer-header { flex: 0 0 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.drawer-header h2 { margin: 0; font-size: 19px; }
+.wishlist-items { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 13px; }
+.wishlist-item { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 11px; padding: 9px; border: 1px solid #ded8d3; border-radius: 8px; background: var(--surface); }
+.wishlist-thumb { width: 72px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 5px; background: #ece7e3; }
+.wishlist-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.wishlist-details { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wishlist-brand { color: var(--emerald-hover); font-size: 7px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.wishlist-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--ink); font-family: Georgia, serif; font-size: 11px; font-weight: 650; line-height: 1.25; }
+.wishlist-price { color: var(--emerald); font-size: 9px; font-weight: 850; }
+.wishlist-actions { margin-top: auto; display: flex; align-items: center; gap: 9px; }
+.text-action { border: 0; background: transparent; color: var(--emerald); font-size: 8px; font-weight: 850; text-decoration: underline; text-underline-offset: 2px; }
+.text-action.is-danger { color: var(--danger); }
+.wishlist-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; text-align: center; }
+.wishlist-empty p { max-width: 260px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.drawer-footer { flex: 0 0 auto; padding: 13px; border-top: 1px solid var(--line); background: var(--surface); }
+.drawer-footer .primary-action { width: 100%; margin: 0; }
 
 @keyframes loading-sweep { 0% { transform: translateX(-110%); } 100% { transform: translateX(340%); } }
 @keyframes shimmer { to { background-position-x: -220%; } }

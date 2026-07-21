@@ -112,6 +112,8 @@ def _reason(intent: ExtensionIntent, *, relaxed_occasion: bool) -> str:
         facts.append(f"matches {intent.category}")
     if intent.occasion and not relaxed_occasion:
         facts.append(f"suited to {intent.occasion}")
+    if intent.tradition:
+        facts.append(f"ranked for {intent.tradition} styling")
     if intent.audience:
         facts.append(f"from the {intent.audience}'s department")
     if intent.wants_kids:
@@ -133,7 +135,7 @@ def _intent_query_text(query: str, intent: ExtensionIntent) -> str:
         normalized_query,
     )
     parts = [] if confirmation_only else [query.strip()]
-    for value in (intent.color, intent.category, intent.fit, intent.descriptive, intent.occasion):
+    for value in (intent.color, intent.category, intent.fit, intent.descriptive, intent.occasion, intent.tradition):
         if value and value.lower() not in query.lower():
             parts.append(value)
     if intent.audience:
@@ -197,6 +199,7 @@ class ExtensionSearchService:
         occasion: str | None,
         query_text: str,
         semantic_query: str,
+        tradition: str | None = None,
     ) -> int:
         result = await run_search(
             self._session,
@@ -206,6 +209,7 @@ class ExtensionSearchService:
             occasion_is_hard=False,
             query_text=query_text,
             semantic_query=semantic_query,
+            tradition=tradition,
         )
         return len(result.products)
 
@@ -265,13 +269,14 @@ class ExtensionSearchService:
         semantic_query = " ".join(
             part.strip() for part in (intent.fit or "", intent.descriptive or "") if part.strip()
         )
-        if intent.category and intent.audience is None and intent.wants_kids is None:
+        if (intent.category or intent.tradition) and intent.audience is None and intent.wants_kids is None:
             query_text = _intent_query_text(query, intent)
             adult_count = await self._count_matches(
                 filters,
                 occasion=intent.occasion,
                 query_text=query_text,
                 semantic_query=semantic_query,
+                tradition=intent.tradition,
             )
             kids_filters = EligibilityFilters(
                 department=None,
@@ -289,11 +294,14 @@ class ExtensionSearchService:
                 occasion=intent.occasion,
                 query_text=query_text,
                 semantic_query=semantic_query,
+                tradition=intent.tradition,
             )
             if adult_count == 0 and kids_count > 0:
+                requested_label = " ".join(
+                    part for part in (intent.color, intent.tradition, intent.category) if part
+                ).strip() or "that"
                 notice = (
-                    f"I couldn't find {intent.color + ' ' if intent.color else ''}"
-                    f"{intent.category} in the adult section, but I found "
+                    f"I couldn't find {requested_label} in the adult section, but I found "
                     f"{kids_count} in kids. Do you want to see kids options?"
                 )
             else:
@@ -323,6 +331,7 @@ class ExtensionSearchService:
             occasion_is_hard=False,
             query_text=_intent_query_text(query, intent),
             semantic_query=semantic_query,
+            tradition=intent.tradition,
         )
         selected = result.products if self._result_limit == 0 else result.products[: self._result_limit]
         variants_by_product = await self._variants_by_product([row.id for row in selected])

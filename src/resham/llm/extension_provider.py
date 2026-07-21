@@ -26,14 +26,17 @@ INTENT_SYSTEM_PROMPT = """You are a conversational shopping-intent parser for a 
 Return one complete, updated JSON object with exactly:
 {"category": string|null, "color": string|null, "size": string|null, "fit": string|null,
  "priceMax": number|null, "priceMin": number|null, "descriptive": string|null,
- "occasion": string|null, "audience": "men"|"women"|null,
+ "occasion": string|null, "tradition": "eastern"|"western"|"fusion"|null,
+ "audience": "men"|"women"|null,
  "wantsKids": boolean|null, "childAgeMonths": number|null}
 
 category is a garment type such as t-shirt, jeans, kurta, or dress. descriptive contains
 style, aesthetic, vibe, material, or occasion language that is not already represented by
 the exact structured fields. fit contains garment-cut language such as baggy, slim, skinny,
 straight, relaxed, wide leg, flared, cropped, regular, loose, or oversized. Fit words are
-never sizes: for example, "baggy jeans" must produce fit="baggy" and size=null. The user
+never sizes: for example, "baggy jeans" must produce fit="baggy" and size=null. tradition
+contains broad eastern/western/fusion styling, not a product category; for "western" with
+no garment type, set category=null and tradition="western". The user
 payload may include a previous intent and a new message.
 Preserve previous fields unless the new message replaces or removes them. Phrases like "blue
 instead", "cheaper", "larger", "more formal", or "remove the budget" refine the previous
@@ -98,6 +101,7 @@ CLEAR_FIELD_PATTERNS = {
     "price_min": (r"\bno minimum(?: price)?\b", r"\bremove (?:the )?minimum(?: price)?\b", r"\bany price\b"),
     "descriptive": (r"\bany style\b", r"\bno style preference\b", r"\bremove (?:the )?(?:style|vibe|occasion|material)\b"),
     "occasion": (r"\bany occasion\b", r"\bremove (?:the )?occasion\b", r"\bno occasion preference\b"),
+    "tradition": (r"\bany (?:tradition|style)\b", r"\bremove (?:the )?(?:eastern|western|fusion|tradition)\b"),
     "audience": (r"\bany (?:gender|department|audience)\b", r"\bshow (?:me )?both\b"),
     "wants_kids": (r"\b(?:not|no) (?:for )?(?:a )?(?:kid|child)\b", r"\bfor (?:an )?adult\b"),
     "child_age_months": (r"\bany (?:child )?age\b", r"\bremove (?:the )?age\b"),
@@ -147,6 +151,7 @@ CATEGORY_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("cardigan", (r"\bcardigans?\b",)),
     ("sherwani", (r"\bsherwanis?\b",)),
     ("achkan", (r"\bachkans?\b",)),
+    ("coat", (r"\btrench\s+coats?\b", r"\bcoats?\b")),
     ("windbreaker", (r"\bwindbreakers?\b",)),
     ("sports bra", (r"\bsports?\s+bras?\b",)),
     ("joggers", (r"\bjoggers?\b", r"\btrack\s+pants?\b")),
@@ -320,6 +325,8 @@ def deterministic_extension_intent(
     fit = extract_explicit_fit(normalized)
     occasion = extract_event(normalized)
     audience = extract_department(normalized)
+    classification_request = extract_classification_request(normalized)
+    tradition = classification_request.tradition
     wants_kids = is_kids_request(normalized)
     child_age_months = extract_child_age_months(normalized)
     size = extract_size(normalized)
@@ -335,6 +342,7 @@ def deterministic_extension_intent(
             color,
             fit,
             occasion,
+            tradition,
             audience,
             wants_kids,
             child_age_months is not None,
@@ -386,6 +394,8 @@ def deterministic_extension_intent(
     # through the semantic parser.
     if occasion:
         remainder = re.sub(rf"\b{re.escape(occasion)}\b", " ", remainder)
+    if tradition:
+        remainder = re.sub(rf"\b{re.escape(tradition)}\b", " ", remainder)
     if re.sub(r"[^a-z0-9]+", "", remainder):
         return None
 
@@ -396,6 +406,7 @@ def deterministic_extension_intent(
         fit=fit,
         priceMax=price_max,
         occasion=occasion,
+        tradition=tradition,
         audience=None if wants_kids else audience,
         wantsKids=True if wants_kids else None,
         childAgeMonths=child_age_months,
@@ -465,15 +476,16 @@ def merge_intent_context(
         parsed = parsed.model_copy(update={"color": explicit_color})
     classification_request = extract_classification_request(query)
     explicit_formality = classification_request.formality
-    explicit_family = classification_request.tradition
+    explicit_tradition = classification_request.tradition
     if classification_request.activewear:
         explicit_formality = "activewear"
-    if explicit_formality or explicit_family:
+    if explicit_tradition:
+        parsed = parsed.model_copy(update={"tradition": explicit_tradition})
+    if explicit_formality:
         parsed = parsed.model_copy(update={
             "descriptive": _append_descriptive(
                 parsed.descriptive,
                 explicit_formality,
-                explicit_family,
             )
         })
     child_age_months = extract_child_age_months(query)
@@ -503,6 +515,8 @@ def merge_intent_context(
         grounded_updates["fit"] = None
     if explicit_event is None:
         grounded_updates["occasion"] = None
+    if explicit_tradition is None:
+        grounded_updates["tradition"] = None
     if explicit_audience is None:
         grounded_updates["audience"] = None
     if not explicit_kids and not kids_confirmation:
@@ -548,7 +562,7 @@ def merge_intent_context(
             updates["category"] = None
         for field in (
             "color", "size", "fit", "price_max", "price_min", "descriptive",
-            "occasion", "wants_kids", "child_age_months",
+            "occasion", "tradition", "wants_kids", "child_age_months",
         ):
             value = getattr(parsed, field)
             text_value_is_explicit = bool(
@@ -563,6 +577,7 @@ def merge_intent_context(
             )
             deterministic_is_explicit = (
                 (field == "occasion" and explicit_event is not None)
+                or (field == "tradition" and explicit_tradition is not None)
                 or (field == "audience" and explicit_audience is not None)
                 or (field == "color" and explicit_color is not None)
                 or (field == "wants_kids" and (explicit_kids or kids_confirmation))
@@ -577,6 +592,8 @@ def merge_intent_context(
                 updates[field] = None
         if explicit_event is not None:
             updates["occasion"] = explicit_event
+        if explicit_tradition is not None:
+            updates["tradition"] = explicit_tradition
         if explicit_audience is not None:
             updates["audience"] = explicit_audience
         elif previous.audience and not standalone_kids_topic and not explicit_kids and not kids_confirmation:

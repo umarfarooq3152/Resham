@@ -7,6 +7,7 @@ export interface ShoppingIntent {
   priceMin: number | null;
   descriptive: string | null;
   occasion: string | null;
+  tradition: 'eastern' | 'western' | 'fusion' | null;
   audience: 'men' | 'women' | null;
   wantsKids: boolean | null;
   childAgeMonths: number | null;

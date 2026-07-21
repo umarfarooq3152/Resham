@@ -4,6 +4,7 @@ import pytest
 
 from resham.llm.extension_provider import (
     GroqExtensionProvider,
+    deterministic_extension_intent,
     extract_explicit_category,
     extract_explicit_fit,
 )
@@ -20,6 +21,19 @@ async def test_parses_single_outer_json_fence():
     intent = await provider.parse_intent("ribbed black t-shirt")
     assert intent.category == "t-shirt"
     assert intent.price_max == 3000
+
+
+def test_western_is_tradition_not_category_and_survives_collection_choice():
+    first = deterministic_extension_intent("western")
+    assert first is not None
+    assert first.category is None
+    assert first.tradition == "western"
+
+    refined = deterministic_extension_intent("men", first)
+    assert refined is not None
+    assert refined.audience == "men"
+    assert refined.tradition == "western"
+    assert refined.category is None
 
 
 @pytest.mark.asyncio
@@ -263,6 +277,7 @@ async def test_audience_switch_drops_old_category_size_and_keeps_neutral_context
         ("polos", "polo"),
         ("tank tops", "tank top"),
         ("formal pants", "pants"),
+        ("trench coat", "coat"),
         ("sleeves", "sleeve"),
         ("belts", "belt"),
     ],

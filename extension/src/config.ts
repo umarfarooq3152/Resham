@@ -1,5 +1,6 @@
 /** Update both this value and manifest host_permissions for deployment. */
 export const API_BASE_URL = 'http://localhost:8000';
+export const WEB_APP_URL = 'http://localhost:3000';
 // The API has its own 25-second safety limit. Leave enough client-side headroom
 // to receive and render the API's structured recovery response instead of
 // aborting the request at the exact same instant.
@@ -10,3 +11,4 @@ export const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 export const SESSION_KEY = 'reshamCurrentSearch';
 export const CONVERSATION_KEY = 'reshamConversation';
 export const LAYOUT_KEY = 'reshamExpandedLayout';
+export const DEVICE_ID_KEY = 'dhaaga_device_id';

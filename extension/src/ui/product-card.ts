@@ -101,6 +101,10 @@ export function renderProductCard(
   product: ProductResult,
   index: number,
   sendMessage: (message: WorkerRequest) => Promise<unknown>,
+  options: {
+    isSaved?: boolean;
+    onToggleWishlist?: (product: ProductResult) => Promise<void> | void;
+  } = {},
 ): HTMLDivElement {
   // A <div role="button"> for the card, not a real <button> — a real
   // "Add to Cart" <button>/<select> below must nest inside it, and
@@ -127,6 +131,20 @@ export function renderProductCard(
     fallback.classList.add('is-visible');
   }, { once: true });
   media.append(image, fallback);
+
+  const wishlistButton = document.createElement('button');
+  wishlistButton.type = 'button';
+  wishlistButton.className = `wishlist-toggle${options.isSaved ? ' is-saved' : ''}`;
+  wishlistButton.setAttribute('aria-label', options.isSaved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`);
+  wishlistButton.title = options.isSaved ? 'Remove from wishlist' : 'Save to wishlist';
+  wishlistButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 6a5 5 0 0 1 7.5 6.6Z"/></svg>';
+  wishlistButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    wishlistButton.disabled = true;
+    void Promise.resolve(options.onToggleWishlist?.(product)).finally(() => {
+      wishlistButton.disabled = false;
+    });
+  });
 
   const body = document.createElement('span');
   body.className = 'product-body';
@@ -169,7 +187,7 @@ export function renderProductCard(
   const cartControl = renderCartControl(product, sendMessage);
   if (cartControl) body.append(cartControl);
 
-  card.append(media, body, externalLinkIcon());
+  card.append(media, wishlistButton, body, externalLinkIcon());
   const openProduct = () => {
     void sendMessage({ type: 'OPEN_PRODUCT', productUrl: product.productUrl });
   };

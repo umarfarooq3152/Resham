@@ -1,15 +1,18 @@
 import {
   API_BASE_URL,
   CONVERSATION_KEY,
+  DEVICE_ID_KEY,
   LAYOUT_KEY,
   MAX_AUDIO_BYTES,
   SESSION_KEY,
   TRANSCRIPTION_TIMEOUT_MS,
+  WEB_APP_URL,
 } from './config';
 import type {
   ChatMessage,
   ConversationState,
   ExtensionError,
+  ProductResult,
   SearchResult,
   SessionSnapshot,
   ShoppingIntent,
@@ -61,6 +64,15 @@ const recordingStrip = mustElement('recording-strip');
 const recordingTime = mustElement('recording-time');
 const layoutToggle = mustElement<HTMLButtonElement>('layout-toggle');
 const checkStoreButton = mustElement<HTMLButtonElement>('check-store');
+const wishlistButton = mustElement<HTMLButtonElement>('wishlist-button');
+const wishlistCount = mustElement('wishlist-count');
+const profileButton = mustElement<HTMLButtonElement>('profile-button');
+const wishlistBackdrop = mustElement('wishlist-backdrop');
+const wishlistDrawer = mustElement('wishlist-drawer');
+const closeWishlistButton = mustElement<HTMLButtonElement>('close-wishlist');
+const wishlistItems = mustElement('wishlist-items');
+const wishlistEmpty = mustElement('wishlist-empty');
+const openWebWishlistButton = mustElement<HTMLButtonElement>('open-web-wishlist');
 
 const welcomeMessage: ChatMessage = {
   id: 'welcome',
@@ -78,9 +90,34 @@ let recordingTimer: number | null = null;
 let visibleProductCount = 0;
 let loadingMoreProducts = false;
 let productPaneHasScrolled = false;
+let deviceId: string | null = null;
+let wishlistProducts: WishlistProduct[] = [];
+let wishlistProductIds = new Set<string>();
 
 const PRODUCT_BATCH_SIZE = 8;
 const MIN_RESPONSE_TRANSITION_MS = 900;
+
+interface ApiWishlistProduct {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
+  product_url: string;
+  brand_domain?: string | null;
+}
+
+interface ApiWishlistResponse {
+  items: Array<{ product: ApiWishlistProduct; added_at: string }>;
+}
+
+interface WishlistProduct {
+  id: string;
+  title: string;
+  price: number;
+  imageUrl: string;
+  productUrl: string;
+  brand: string;
+}
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -99,6 +136,152 @@ function greetingReply(query: string): string | null {
 
 async function sendMessage(message: WorkerRequest): Promise<WorkerResponse> {
   return chrome.runtime.sendMessage(message) as Promise<WorkerResponse>;
+}
+
+function brandFromProductId(productId: string): string {
+  const slug = productId.split(':')[0] || 'Dhaaga';
+  return slug.replace(/-/g, ' ');
+}
+
+function mapWishlistProduct(product: ApiWishlistProduct): WishlistProduct {
+  return {
+    id: product.id,
+    title: product.name,
+    price: product.price,
+    imageUrl: product.image,
+    productUrl: product.product_url,
+    brand: product.brand_domain || brandFromProductId(product.id),
+  };
+}
+
+async function getDeviceId(): Promise<string> {
+  if (deviceId) return deviceId;
+  const stored = await chrome.storage.local.get(DEVICE_ID_KEY);
+  const existing = stored[DEVICE_ID_KEY];
+  deviceId = typeof existing === 'string' && existing ? existing : crypto.randomUUID();
+  if (deviceId !== existing) await chrome.storage.local.set({ [DEVICE_ID_KEY]: deviceId });
+  return deviceId;
+}
+
+async function wishlistRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Device-Id': await getDeviceId(),
+      ...options.headers,
+    },
+  });
+  if (!response.ok) throw normalizeBackendError(response.status, await response.json().catch(() => ({})));
+  return response.status === 204 ? undefined as T : response.json() as Promise<T>;
+}
+
+function renderWishlist(): void {
+  wishlistProductIds = new Set(wishlistProducts.map((product) => product.id));
+  wishlistCount.hidden = wishlistProducts.length === 0;
+  wishlistCount.textContent = String(wishlistProducts.length);
+  wishlistButton.classList.toggle('is-saved', wishlistProducts.length > 0);
+  wishlistItems.replaceChildren();
+  wishlistEmpty.hidden = wishlistProducts.length > 0;
+  wishlistItems.hidden = wishlistProducts.length === 0;
+
+  for (const product of wishlistProducts) {
+    const item = document.createElement('article');
+    item.className = 'wishlist-item';
+
+    const thumb = document.createElement('span');
+    thumb.className = 'wishlist-thumb';
+    const image = document.createElement('img');
+    image.src = product.imageUrl;
+    image.alt = '';
+    image.referrerPolicy = 'no-referrer';
+    thumb.append(image);
+
+    const details = document.createElement('span');
+    details.className = 'wishlist-details';
+    const brand = document.createElement('span');
+    brand.className = 'wishlist-brand';
+    brand.textContent = product.brand;
+    const title = document.createElement('span');
+    title.className = 'wishlist-name';
+    title.textContent = product.title;
+    const price = document.createElement('span');
+    price.className = 'wishlist-price';
+    price.textContent = formatWishlistPrice(product.price);
+
+    const actions = document.createElement('span');
+    actions.className = 'wishlist-actions';
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'text-action';
+    view.textContent = 'View';
+    view.addEventListener('click', () => void sendMessage({ type: 'OPEN_PRODUCT', productUrl: product.productUrl }));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'text-action is-danger';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => void toggleWishlistById(product.id));
+    actions.append(view, remove);
+
+    details.append(brand, title, price, actions);
+    item.append(thumb, details);
+    wishlistItems.append(item);
+  }
+}
+
+function formatWishlistPrice(price: number): string {
+  return `Rs. ${Math.round(price).toLocaleString('en-PK')}`;
+}
+
+async function loadWishlist(): Promise<void> {
+  try {
+    const response = await wishlistRequest<ApiWishlistResponse>('/wishlist');
+    wishlistProducts = response.items.map((item) => mapWishlistProduct(item.product));
+    renderWishlist();
+    renderResults(currentResult);
+  } catch (error) {
+    console.warn('Failed to load wishlist:', error);
+  }
+}
+
+async function toggleWishlistById(productId: string, fallbackProduct?: ProductResult): Promise<void> {
+  const wasSaved = wishlistProductIds.has(productId);
+  if (wasSaved) {
+    wishlistProducts = wishlistProducts.filter((product) => product.id !== productId);
+  } else if (fallbackProduct) {
+    wishlistProducts = [
+      mapWishlistProduct({
+        id: fallbackProduct.id,
+        name: fallbackProduct.title,
+        price: fallbackProduct.price,
+        image: fallbackProduct.imageUrl,
+        product_url: fallbackProduct.productUrl,
+        brand_domain: currentResult?.meta.storeDomain || null,
+      }),
+      ...wishlistProducts,
+    ];
+  }
+  renderWishlist();
+  renderResults(currentResult);
+
+  try {
+    await wishlistRequest(`/wishlist/${encodeURIComponent(productId)}`, { method: wasSaved ? 'DELETE' : 'POST' });
+    await loadWishlist();
+  } catch (error) {
+    console.warn('Failed to update wishlist:', error);
+    await loadWishlist();
+  }
+}
+
+function setWishlistOpen(open: boolean): void {
+  wishlistBackdrop.hidden = !open;
+  wishlistDrawer.classList.toggle('is-open', open);
+  wishlistDrawer.setAttribute('aria-hidden', String(!open));
+}
+
+function openWebApp(path = ''): void {
+  const url = `${WEB_APP_URL}${path}`;
+  void chrome.tabs.create({ url });
 }
 
 function message(role: ChatMessage['role'], text: string): ChatMessage {
@@ -152,6 +335,7 @@ function intentLabels(intent: ShoppingIntent): string[] {
   if (intent.color) labels.push(intent.color);
   if (intent.size) labels.push(`Size ${intent.size.toUpperCase()}`);
   if (intent.fit) labels.push(`${intent.fit} fit`);
+  if (intent.tradition) labels.push(intent.tradition);
   if (intent.priceMin !== null && intent.priceMax !== null) {
     labels.push(`Rs. ${intent.priceMin.toLocaleString()}–${intent.priceMax.toLocaleString()}`);
   } else if (intent.priceMax !== null) labels.push(`Under Rs. ${intent.priceMax.toLocaleString()}`);
@@ -188,7 +372,11 @@ function appendNextProductBatch(immediate = false): void {
     const start = visibleProductCount;
     const end = Math.min(start + PRODUCT_BATCH_SIZE, currentResult.products.length);
     for (let index = start; index < end; index += 1) {
-      productList.append(renderProductCard(currentResult.products[index], index, sendMessage));
+      const product = currentResult.products[index];
+      productList.append(renderProductCard(product, index, sendMessage, {
+        isSaved: wishlistProductIds.has(product.id),
+        onToggleWishlist: (item) => toggleWishlistById(item.id, item),
+      }));
     }
     visibleProductCount = end;
     loadingMoreProducts = false;
@@ -227,11 +415,17 @@ function renderResults(result: SearchResult | null): void {
     chip.textContent = labelText;
     intentChips.append(chip);
   }
-  notice.hidden = !result.notice;
-  notice.textContent = result.notice || '';
+  const isClarification = result.products.length === 0 && Boolean(result.notice);
+  notice.hidden = isClarification || !result.notice;
+  notice.textContent = isClarification ? '' : result.notice || '';
   appendNextProductBatch(true);
-  noMatches.hidden = result.products.length > 0;
+  noMatches.hidden = result.products.length > 0 || isClarification;
   productList.hidden = result.products.length === 0;
+  if (isClarification) {
+    resultSummary.textContent = '';
+    productFeedControls.hidden = true;
+    productFeedStatus.textContent = '';
+  }
   chatInput.placeholder = 'Refine these results…';
 }
 
@@ -585,6 +779,11 @@ retryButton.addEventListener('click', () => {
 });
 layoutToggle.addEventListener('click', () => setExpanded(!document.body.classList.contains('is-expanded')));
 checkStoreButton.addEventListener('click', () => void checkActiveStore());
+wishlistButton.addEventListener('click', () => setWishlistOpen(true));
+closeWishlistButton.addEventListener('click', () => setWishlistOpen(false));
+wishlistBackdrop.addEventListener('click', () => setWishlistOpen(false));
+profileButton.addEventListener('click', () => openWebApp());
+openWebWishlistButton.addEventListener('click', () => openWebApp());
 loadMoreButton.addEventListener('click', () => appendNextProductBatch());
 productsPane.addEventListener('scroll', () => {
   if (productsPane.scrollTop > 0) productPaneHasScrolled = true;
@@ -597,7 +796,8 @@ new IntersectionObserver(
 ).observe(productScrollSentinel);
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (recorder.isRecording) cancelRecording();
+  if (wishlistDrawer.classList.contains('is-open')) setWishlistOpen(false);
+  else if (recorder.isRecording) cancelRecording();
   else if (currentRequestId) void cancelSearch();
 });
 window.addEventListener('pagehide', () => {
@@ -640,4 +840,5 @@ async function checkActiveStore(): Promise<void> {
 }
 
 void restoreState();
+void loadWishlist();
 void checkActiveStore();

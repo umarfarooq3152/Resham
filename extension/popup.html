@@ -17,6 +17,13 @@
           </div>
         </div>
         <div class="header-actions">
+          <button id="wishlist-button" class="icon-button" type="button" aria-label="Open saved collection" title="Saved collection">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 6a5 5 0 0 1 7.5 6.6Z"/></svg>
+            <span id="wishlist-count" class="count-badge" hidden>0</span>
+          </button>
+          <button id="profile-button" class="icon-button" type="button" aria-label="Open profile" title="Profile and preferences">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>
+          </button>
           <button id="new-search" class="header-button" type="button">New search</button>
           <button id="layout-toggle" class="square-button" type="button" aria-label="Use compact width" aria-pressed="true" title="Toggle extension width">
             <svg class="expand-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M3 3l6 6M16 21h5v-5M21 21l-6-6"/></svg>
@@ -129,6 +136,30 @@
           </aside>
         </section>
       </main>
+
+      <div id="wishlist-backdrop" class="drawer-backdrop" hidden></div>
+      <aside id="wishlist-drawer" class="wishlist-drawer" aria-labelledby="wishlist-title" aria-hidden="true">
+        <div class="drawer-header">
+          <div>
+            <p class="eyebrow">Saved collection</p>
+            <h2 id="wishlist-title">Wishlist</h2>
+          </div>
+          <button id="close-wishlist" class="square-button" type="button" aria-label="Close wishlist">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div id="wishlist-items" class="wishlist-items"></div>
+        <div id="wishlist-empty" class="wishlist-empty">
+          <div class="state-icon is-soft" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 6a5 5 0 0 1 7.5 6.6Z"/></svg>
+          </div>
+          <h2>Your collection is empty</h2>
+          <p>Save pieces from search results and revisit them here while you shop.</p>
+        </div>
+        <div class="drawer-footer">
+          <button id="open-web-wishlist" class="primary-action" type="button">Open in Dhaaga</button>
+        </div>
+      </aside>
     </div>
     <script type="module" src="popup.js"></script>
   </body>
