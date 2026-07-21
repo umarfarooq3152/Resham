@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resetSession as resetSessionApi, sendSessionMessage } from '../api/session';
-import { searchProducts } from '../api/products';
+import { searchProducts, searchProductsByImage } from '../api/products';
 import { FilterChips, Message, Product, SessionState } from '../types';
 
 const DEFAULT_FILTERS: FilterChips = {
@@ -8,6 +8,13 @@ const DEFAULT_FILTERS: FilterChips = {
   occasion: 'All Occasions',
   budget: 'All Budgets',
 };
+
+// A warm, open invitation rather than a checklist of required fields
+// ("tell me the occasion, fabric, price range...") — the shopper should
+// feel like they're starting a conversation, not filling out a form.
+function welcomeText(userName: string): string {
+  return `Assalam-o-Alaikum ${userName}! Welcome to Dhaaga — I'm here to help you find something beautiful across Pakistan's top fashion labels. What's on your mind today?`;
+}
 
 // Bump when server-side intent/session semantics change so an evaluator never
 // rehydrates a stale, polluted conversation from an older build.
@@ -74,6 +81,7 @@ interface UseSessionChatResult {
   isLoadingMore: boolean;
   hasMoreResults: boolean;
   sendMessage: (text: string) => void;
+  searchByImage: (image: File) => void;
   loadMore: () => void;
   resetSession: () => void;
 }
@@ -92,6 +100,7 @@ function buildPaginationQuery(state: SessionState | null): Parameters<typeof sea
     tags: state?.style_descriptors?.length ? state.style_descriptors : undefined,
     wantsKids: Boolean(state?.wants_kids),
     childAgeMonths: state?.child_age_months ?? undefined,
+    minPrice: state?.budget_min ?? undefined,
     maxPrice: state?.budget_max ?? undefined,
   };
 }
@@ -206,11 +215,50 @@ export function useSessionChat(
       });
   }, [hasMoreResults, isLoadingMore, isProductsLoading]);
 
+  const searchByImage = useCallback((image: File) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    setMessages((prev) => [...prev, {
+      id: nextMessageId('user'), sender: 'user',
+      text: `Searching from image: ${image.name}`, timestamp: nowStr(),
+    }]);
+    setIsChatLoading(true);
+    setIsProductsLoading(true);
+
+    searchProductsByImage(image, department)
+      .then((result) => {
+        setFilteredProducts(result.items);
+        setTotalResults(result.total);
+        setHasMoreResults(result.items.length < result.total);
+        pageRef.current = 1;
+        setMessages((prev) => [...prev, {
+          id: nextMessageId('assistant'), sender: 'assistant',
+          text: result.total
+            ? `I found ${result.total} match${result.total === 1 ? '' : 'es'} for a ${result.query}.`
+            : "I couldn't find a close catalog match for that image yet.",
+          timestamp: nowStr(),
+        }]);
+      })
+      .catch((error) => {
+        console.error('Visual search failed:', error);
+        setMessages((prev) => [...prev, {
+          id: nextMessageId('error'), sender: 'assistant',
+          text: "I couldn't analyze that image. Please try a JPEG, PNG, or WebP under 8 MB.",
+          timestamp: nowStr(),
+        }]);
+      })
+      .finally(() => {
+        requestInFlightRef.current = false;
+        setIsChatLoading(false);
+        setIsProductsLoading(false);
+      });
+  }, [department]);
+
   const resetSession = useCallback(() => {
     const welcomeMessage: Message = {
       id: 'welcome',
       sender: 'assistant',
-      text: `Assalam-o-Alaikum ${userName}. I am Dhaaga's AI Assistant. Tell me what celebratory moment you are dressing for, your preferred fabric, or a specific price range.`,
+      text: welcomeText(userName),
       timestamp: nowStr(),
     };
 
@@ -261,7 +309,7 @@ export function useSessionChat(
         {
           id: 'welcome',
           sender: 'assistant',
-          text: `Assalam-o-Alaikum ${userName}. I am Dhaaga's AI Assistant. Tell me what celebratory moment you are dressing for, your preferred fabric, or a specific price range.`,
+          text: welcomeText(userName),
           timestamp: nowStr(),
         },
       ]);
@@ -306,6 +354,7 @@ export function useSessionChat(
     isLoadingMore,
     hasMoreResults,
     sendMessage,
+    searchByImage,
     loadMore,
     resetSession,
   };

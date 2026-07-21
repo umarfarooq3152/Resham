@@ -28,6 +28,7 @@ from resham.schemas.extension import (
     ExtensionProductResult,
     ExtensionSearchMeta,
     ExtensionSearchResponse,
+    ExtensionVariantOut,
 )
 from resham.search.eligibility import EligibilityFilters, normalize_size
 from resham.search.service import search as run_search
@@ -359,6 +360,15 @@ class ExtensionSearchService:
                         audience=row.department if intent.audience else None,
                         imageMatchesColor=image_matches_color,
                     ),
+                    variants=[
+                        ExtensionVariantOut(
+                            variantId=variant.external_variant_id,
+                            color=variant.color,
+                            size=variant.size,
+                            available=variant.available,
+                        )
+                        for variant in display_variants
+                    ],
                 )
             )
 

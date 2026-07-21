@@ -138,6 +138,7 @@ export default function App() {
                 authUser={auth.user}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
                 onLogout={auth.logout}
+                onUpdateProfile={auth.updateProfile}
               />
             )}
             {currentScreen === 'chat' && (
@@ -154,6 +155,7 @@ export default function App() {
                 authUser={auth.user}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
                 onLogout={auth.logout}
+                onUpdateProfile={auth.updateProfile}
               />
             )}
             {currentScreen === 'detail' && selectedProduct && (

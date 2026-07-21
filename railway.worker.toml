@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["src/**", "migrations/**", "pyproject.toml", "alembic.ini", "Dockerfile"]
+
+[deploy]
+startCommand = "python -m resham.worker.main"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

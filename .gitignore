@@ -16,3 +16,4 @@ extension/test-results/
 extension/playwright-report/
 chroma_data/
 .DS_Store
+db_export/

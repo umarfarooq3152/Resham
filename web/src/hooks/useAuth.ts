@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AuthUser, getMe, login as apiLogin, signup as apiSignup } from '../api/auth';
+import { AuthUser, getMe, login as apiLogin, signup as apiSignup, updateProfile as apiUpdateProfile } from '../api/auth';
 import { getStoredAuthToken, setStoredAuthToken, clearStoredAuthToken } from '../api/client';
 
 interface UseAuthResult {
@@ -8,6 +8,7 @@ interface UseAuthResult {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
+  updateProfile: (updates: Partial<Pick<AuthUser, 'name' | 'preferred_size' | 'department'>>) => Promise<void>;
 }
 
 /** Manages the logged-in shopper's session — a JWT in localStorage,
@@ -57,5 +58,13 @@ export function useAuth(): UseAuthResult {
     setUser(null);
   }, []);
 
-  return { user, isLoading, login, signup, logout };
+  const updateProfile = useCallback(
+    async (updates: Partial<Pick<AuthUser, 'name' | 'preferred_size' | 'department'>>) => {
+      const updated = await apiUpdateProfile(updates);
+      setUser(updated);
+    },
+    [],
+  );
+
+  return { user, isLoading, login, signup, logout, updateProfile };
 }

@@ -59,6 +59,7 @@ export function normalizeBackendError(status: number, payload: unknown): Extensi
     PROVIDER_UNAVAILABLE: "Resham's matching service is unavailable right now.",
     NO_MATCHES: "We couldn't find a close match in this catalog.",
     REQUEST_CANCELLED: 'Search cancelled.',
+    CART_ADD_FAILED: "Couldn't add that to your cart. Try again on the store's own page.",
     INTERNAL_ERROR: 'The search could not be completed.',
   };
   const serverMessage = typeof detail.message === 'string' && detail.message.length <= 240

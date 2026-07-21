@@ -126,15 +126,3 @@ def product_age_ranges(product: "Product") -> list[AgeRange]:
 
 def product_supports_age(product: "Product", child_age_months: int) -> bool:
     return any(start <= child_age_months <= end for start, end in product_age_ranges(product))
-
-
-def products_have_compatible_ages(first: "Product", second: "Product") -> bool:
-    first_ranges = product_age_ranges(first)
-    second_ranges = product_age_ranges(second)
-    if not first_ranges:
-        return bool(second_ranges)
-    return any(
-        max(first_start, second_start) <= min(first_end, second_end)
-        for first_start, first_end in first_ranges
-        for second_start, second_end in second_ranges
-    )

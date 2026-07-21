@@ -76,28 +76,6 @@ class FastPathMatch:
     show_more: bool = False
 
 
-def is_control_message(text: str) -> bool:
-    """True only for UI/session controls that do not require fashion semantics.
-
-    Product, occasion, vibe, typo, and free-form shopping interpretation belongs
-    to the LLM-first path. Deterministic handling remains for cheap state actions
-    such as greeting, show-more, removal, and explicit audience-only switches.
-    """
-    lower = text.lower().strip()
-    return bool(
-        GREETING_PATTERN.fullmatch(lower)
-        or lower.rstrip(".!?") in UNSURE_PHRASES
-        or _is_department_only_message(lower)
-        or any(phrase in lower for phrase in CHEAPER_PHRASES)
-        or any(phrase in lower for phrase in MORE_FORMAL_PHRASES)
-        or any(phrase in lower for phrase in MORE_CASUAL_PHRASES)
-        or any(phrase in lower for phrase in DIFFERENT_BRAND_PHRASES)
-        or any(phrase in lower for phrase in SHOW_MORE_PHRASES)
-        or _clear_filter_field(lower) is not None
-        or re.search(r"\b(?:without|remove)\s+[a-z][a-z -]*\b", lower)
-    )
-
-
 def _empty_diff(assistant_reply: str) -> IntentExtractionResult:
     return IntentExtractionResult(assistant_reply=assistant_reply, clarify=False)
 
@@ -123,8 +101,8 @@ def classify(
         return FastPathMatch(
             diff=IntentExtractionResult(
                 assistant_reply=(
-                    "I'm doing well — thanks for asking! Tell me what you're shopping for, "
-                    "or start with a product, color, occasion, size, or budget."
+                    "I'm doing well — thanks for asking! What are you shopping for today, "
+                    "or is there an occasion you're dressing for? Happy to help however works for you."
                 ),
                 clarify=True,
             )
@@ -185,9 +163,15 @@ def classify(
     category_match = extract_primary_garment(lower)
     explicit_styles = without_garment_descriptors(extract_search_descriptors(lower))
     occasion = extract_event(lower)
-    budget = extract_budget_max(lower)
+    budget_min, budget_max = extract_budget_range(lower)
+    if budget_max is None:
+        budget_max = extract_budget_max(lower)
+    if budget_min is None:
+        budget_min = extract_budget_min(lower)
     size = extract_size(lower)
-    if (category_match or explicit_styles or occasion) and _is_simple_structured_search(
+    if (
+        category_match or explicit_styles or occasion or budget_max is not None or budget_min is not None
+    ) and _is_simple_structured_search(
         lower,
         color_match,
         category_match,
@@ -201,10 +185,11 @@ def classify(
                 style_descriptors=explicit_styles,
                 department=department,
                 occasion=occasion,
-                budget_max=budget,
+                budget_min=budget_min,
+                budget_max=budget_max,
                 size=size,
-                assistant_reply=(
-                    f"Showing exact {category_match} options that match your request."
+                assistant_reply=_structured_search_reply(
+                    category_match, explicit_styles, occasion, budget_min, budget_max
                 ),
             )
         )
@@ -221,6 +206,33 @@ def classify(
         )
 
     return None
+
+
+def _structured_search_reply(
+    category: str | None,
+    styles: list[str],
+    occasion: str | None,
+    budget_min: int | None = None,
+    budget_max: int | None = None,
+) -> str:
+    """A category is only one of several things this branch can match on
+    (styles/occasion/budget alone can also trigger it — e.g. a bare
+    "western" refinement or "above 30000") — the reply text must never
+    assume one is always present, or it prints the literal word "None" to
+    the shopper."""
+    if category:
+        return f"Showing exact {category} options that match your request."
+    if styles:
+        return f"Updated to {' '.join(styles)} — here's what matches."
+    if occasion:
+        return f"Showing options for {occasion}."
+    if budget_min is not None and budget_max is not None:
+        return f"Showing options between Rs. {budget_min:,} and Rs. {budget_max:,}."
+    if budget_min is not None:
+        return f"Showing options above Rs. {budget_min:,}."
+    if budget_max is not None:
+        return f"Showing options under Rs. {budget_max:,}."
+    return "Here's what matches your request."
 
 
 def _clear_filter_field(lower_text: str) -> str | None:
@@ -270,7 +282,15 @@ def _is_simple_structured_search(
         )
         normalized = re.sub(rf"\b{phrase_pattern}\b", " ", normalized)
     normalized = re.sub(
-        r"\b(?:under|below|upto|up to|less than|max(?:imum)?|budget(?: of)?|within)\s*"
+        r"\bbetween\s*(?:rs\.?|pkr)?\s*\d+(?:\.\d+)?\s*(?:k|thousand|lakh)?\s*"
+        r"(?:and|to|-)\s*(?:rs\.?|pkr)?\s*\d+(?:\.\d+)?\s*(?:k|thousand|lakh)?\b",
+        " ",
+        normalized,
+    )
+    normalized = re.sub(
+        r"\b(?:under|below|upto|up to|less than|max(?:imum)?|budget(?: of)?|within|"
+        r"above|over|more th(?:an|en)|greater than|starting (?:from|at)|"
+        r"minimum(?: of)?|min\.?|at least)\s*"
         r"(?:rs\.?|pkr)?\s*\d+(?:\.\d+)?\s*(?:k|thousand|lakh)?\b",
         " ",
         normalized,
@@ -306,8 +326,45 @@ def extract_budget_max(text: str) -> int | None:
     )
     if not match:
         return None
-    value = float(match.group(1))
-    suffix = (match.group(2) or "").lower()
+    return _budget_value(match.group(1), match.group(2))
+
+
+def extract_budget_min(text: str) -> int | None:
+    """"More than 30000", "above 8k", "starting from 1 lakh" name a floor,
+    not a ceiling — a real observed bug conflated these with budget_max,
+    silently searching UNDER the stated amount instead of above it."""
+    match = re.search(
+        r"\b(?:above|over|more\s+th(?:an|en)|greater\s+than|starting\s+(?:from|at)|"
+        r"minimum(?:\s+of)?|min\.?|at\s+least)\s*"
+        r"(?:rs\.?|pkr)?\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh)?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return _budget_value(match.group(1), match.group(2))
+
+
+def extract_budget_range(text: str) -> tuple[int | None, int | None]:
+    """"Between 20k and 40k" states both ends in one phrase — handled ahead
+    of the standalone min/max patterns above so it is never read as two
+    unrelated numbers."""
+    match = re.search(
+        r"\bbetween\s*(?:rs\.?|pkr)?\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh)?\s*"
+        r"(?:and|to|-)\s*(?:rs\.?|pkr)?\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh)?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None, None
+    first = _budget_value(match.group(1), match.group(2))
+    second = _budget_value(match.group(3), match.group(4))
+    return min(first, second), max(first, second)
+
+
+def _budget_value(number: str, suffix: str | None) -> int:
+    value = float(number)
+    suffix = (suffix or "").lower()
     multiplier = 100_000 if suffix == "lakh" else 1_000 if suffix in {"k", "thousand"} else 1
     return int(value * multiplier)
 
@@ -416,6 +473,10 @@ def _match_cheaper(last_results: list[Product]) -> FastPathMatch | None:
 
     diff = IntentExtractionResult(
         budget_max=new_budget,
+        # A previously stated budget_min (e.g. "above 30000") would otherwise
+        # survive alongside this new, lower ceiling and produce an
+        # impossible min > max range.
+        clear_fields=["budget"],
         assistant_reply=f"Sure — showing options under Rs. {new_budget:,}.",
     )
     return FastPathMatch(diff=diff)

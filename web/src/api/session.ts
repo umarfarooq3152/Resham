@@ -18,12 +18,24 @@ const DEFAULT_FILTERS: SessionMessageResult['filters'] = {
   budget: 'All Budgets',
 };
 
-function describeBudget(budgetMax: number | null | undefined): string {
-  return budgetMax ? `Under Rs. ${budgetMax.toLocaleString('en-PK')}` : 'All Budgets';
+function describeBudget(
+  budgetMin: number | null | undefined,
+  budgetMax: number | null | undefined
+): string {
+  if (budgetMin && budgetMax) {
+    return `Rs. ${budgetMin.toLocaleString('en-PK')} – Rs. ${budgetMax.toLocaleString('en-PK')}`;
+  }
+  if (budgetMin) {
+    return `Above Rs. ${budgetMin.toLocaleString('en-PK')}`;
+  }
+  if (budgetMax) {
+    return `Under Rs. ${budgetMax.toLocaleString('en-PK')}`;
+  }
+  return 'All Budgets';
 }
 
 function normalizeFilters(response: ChatTurnResponse): SessionMessageResult['filters'] {
-  const serverFilters = response.filters ?? {};
+  const serverFilters: Partial<SessionMessageResult['filters']> = response.filters ?? {};
   const state = response.session_state;
   const styles = state.style_descriptors ?? [];
   return {
@@ -31,7 +43,7 @@ function normalizeFilters(response: ChatTurnResponse): SessionMessageResult['fil
     style: serverFilters.style ?? (styles[0] ?? DEFAULT_FILTERS.style),
     styles: serverFilters.styles ?? (styles.length ? styles : undefined),
     occasion: serverFilters.occasion ?? state.occasion ?? DEFAULT_FILTERS.occasion,
-    budget: serverFilters.budget ?? describeBudget(state.budget_max),
+    budget: serverFilters.budget ?? describeBudget(state.budget_min, state.budget_max),
     color: serverFilters.color ?? state.color_preference ?? undefined,
     size: serverFilters.size ?? state.size ?? undefined,
     age: serverFilters.age ?? (

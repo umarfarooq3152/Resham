@@ -136,19 +136,3 @@ def tag_product(product: Product) -> Product:
         return product
 
 
-def tag_products_batch(products: list[Product]) -> list[Product]:
-    """Tag a batch of products.
-
-    Args:
-        products: List of products to tag
-
-    Returns:
-        List of tagged products
-    """
-    tagged = []
-    for product in products:
-        tagged_product = tag_product(product)
-        tagged.append(tagged_product)
-
-    logger.info(f"Tagged {len(tagged)} products")
-    return tagged

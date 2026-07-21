@@ -74,7 +74,7 @@ async def search(
     """The shared search entrypoint: gate with eligibility.py (hard filters
     only), order with ranking.py (vector + rule-based, never widens the
     set), recover from a genuine zero-match with relax.py — occasion always,
-    plus whichever of size/color/budget_max the caller marks relaxable.
+    plus whichever of size/color/budget_max/budget_min the caller marks relaxable.
     """
 
     async def _search_once(

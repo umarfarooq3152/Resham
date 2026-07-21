@@ -33,6 +33,14 @@ function mapProduct(
     ageRangesMonths: apiProduct.age_ranges_months ?? [],
     liveVerified: apiProduct.live_verified ?? false,
     liveVerifiedAt: apiProduct.live_verified_at ?? undefined,
+    variants: (apiProduct.variants ?? []).map((v) => ({
+      variantId: v.variant_id,
+      color: v.color ?? undefined,
+      size: v.size ?? undefined,
+      price: v.price,
+      available: v.available,
+    })),
+    brandDomain: apiProduct.brand_domain ?? undefined,
   };
 }
 
@@ -42,7 +50,7 @@ export async function toProduct(apiProduct: ApiProduct): Promise<Product> {
     brandNames = await getBrandNameMap();
   } catch (error) {
     // Brand display names are optional decoration. Never discard a valid
-    // search result because that secondary endpoint is temporarily down.
+    // product because that secondary endpoint is temporarily down.
     console.warn('Brand names unavailable; using catalog slugs.', error);
   }
   return mapProduct(apiProduct, brandNames);
@@ -82,6 +90,12 @@ export interface ProductSearchResult {
   hasMore: boolean;
 }
 
+export interface VisualSearchResult extends ProductSearchResult {
+  query: string;
+  category?: string;
+  color?: string;
+}
+
 function buildSearchQuery(params: ProductSearchParams): string {
   const search = new URLSearchParams();
   if (params.q) search.set('q', params.q);
@@ -113,6 +127,21 @@ async function toSearchResult(response: ApiProductSearchResponse): Promise<Produ
 export async function searchProducts(params: ProductSearchParams = {}): Promise<ProductSearchResult> {
   const response = await api.get<ApiProductSearchResponse>(`/products/search?${buildSearchQuery(params)}`);
   return toSearchResult(response);
+}
+
+export async function searchProductsByImage(
+  image: File,
+  department?: 'men' | 'women' | 'unisex'
+): Promise<VisualSearchResult> {
+  const params = new URLSearchParams({ page: '1', page_size: '40' });
+  if (department) params.set('department', department);
+  const formData = new FormData();
+  formData.set('image', image);
+  const response = await api.postFormData<
+    ApiProductSearchResponse & { query: string; category?: string; color?: string }
+  >(`/products/visual-search?${params}`, formData);
+  const result = await toSearchResult(response);
+  return { ...result, query: response.query, category: response.category, color: response.color };
 }
 
 export async function fetchProduct(productId: string): Promise<Product> {

@@ -24,6 +24,13 @@ RUN pip install --no-cache-dir --no-deps --force-reinstall .
 COPY alembic.ini ./
 COPY migrations ./migrations
 
+# Pre-created and owned by resham so that when docker-compose.yml mounts a
+# fresh named volume here, Docker copies this directory's ownership into
+# the volume on first mount — otherwise the volume's mount point defaults
+# to root:root and the embedding model download (as the non-root resham
+# user below) fails with a plain PermissionError.
+RUN mkdir -p /home/resham/.cache/chroma && chown -R resham:resham /home/resham/.cache
+
 USER resham
 
 # Overridden per-service in docker-compose.yml (api / worker / migrate).

@@ -8,14 +8,18 @@ request path at all — the LLM only ever extracts intent and writes the
 conversational reply; it never sees or composes from the product list.
 """
 
+import inspect
 import logging
 from uuid import UUID, uuid4
 
 from chromadb.api.models.Collection import Collection
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resham.catalog.product_view import row_to_pydantic_product
+from resham.db.models.brand import Brand
 from resham.llm.fallback import FallbackIntentProvider
+from resham.nlp.brands import extract_requested_brands
 from resham.nlp.diff_merge import merge_session_state
 from resham.nlp.fast_path_classifier import classify, is_kids_request
 from resham.nlp.garments import requested_formality, requested_tradition
@@ -33,7 +37,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 40
 
-_RELAXED_FIELD_LABELS = {"size": "size", "color": "color", "budget_max": "budget"}
+_RELAXED_FIELD_LABELS = {
+    "size": "size", "color": "color", "budget_max": "budget", "budget_min": "budget",
+}
 
 
 def _filters_from_state(state: SessionState) -> EligibilityFilters:
@@ -44,6 +50,7 @@ def _filters_from_state(state: SessionState) -> EligibilityFilters:
         category=state.category,
         color=state.color_preference,
         size=state.size,
+        budget_min=state.budget_min,
         budget_max=state.budget_max,
         brands=list(state.brands),
         excluded_brands=list(state.excluded),
@@ -154,6 +161,25 @@ class SessionService:
         if is_kids_request(text):
             new_state = new_state.model_copy(update={"wants_kids": True})
 
+        # Brand names are a deterministic catalog constraint, not an LLM
+        # inference. Resolve only exact registry names/slugs and retain the
+        # previous allow-list when this turn names no brand (normal refinements
+        # such as "blue instead" must not broaden a brand-scoped search).
+        brand_result = await self._db.execute(
+            select(Brand.slug, Brand.name).where(Brand.is_active.is_(True))
+        )
+        active_brands = brand_result.all()
+        # SQLAlchemy returns a synchronous list. This guard keeps the session
+        # service tolerant of lightweight AsyncSession test doubles, whose
+        # unconfigured ``.all()`` is itself an awaitable mock.
+        if inspect.isawaitable(active_brands):
+            active_brands = await active_brands
+        if not isinstance(active_brands, (list, tuple)):
+            active_brands = []
+        requested_brands = extract_requested_brands(text, active_brands)
+        if requested_brands:
+            new_state = new_state.model_copy(update={"brands": requested_brands})
+
         filters = _filters_from_state(new_state)
         occasion_is_hard = "occasion" in new_state.hard_constraints
 
@@ -185,8 +211,10 @@ class SessionService:
             reply = _no_results_reply(new_state)
         else:
             notice = _relaxation_notice(
-                result.effective_occasion, new_state.occasion,
-                result.effective_category, new_state.category,
+                result.effective_occasion,
+                new_state.occasion,
+                result.effective_category,
+                new_state.category,
                 result.dropped_filters,
             )
             reply = notice or diff.assistant_reply

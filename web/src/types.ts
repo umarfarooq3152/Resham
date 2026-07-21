@@ -1,3 +1,14 @@
+/** A purchasable Shopify variant — the unit cart/add.js operates on.
+ * Only populated by GET /products/{id} (the detail view); search/collections/
+ * session/wishlist responses leave this empty by design (see schemas/product.py). */
+export interface ProductVariant {
+  variantId: string;
+  color?: string;
+  size?: string;
+  price: number;
+  available: boolean;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -17,9 +28,19 @@ export interface Product {
   ageRangesMonths: Array<[number, number]>;
   liveVerified: boolean;
   liveVerifiedAt?: string;
+  variants: ProductVariant[];
+  brandDomain?: string;
 }
 
 /** Raw shape returned by the backend's /products* endpoints (schemas/product.py). */
+export interface ApiProductVariant {
+  variant_id: string;
+  color: string | null;
+  size: string | null;
+  price: number;
+  available: boolean;
+}
+
 export interface ApiProduct {
   id: string;
   name: string;
@@ -38,6 +59,8 @@ export interface ApiProduct {
   product_url: string;
   live_verified?: boolean;
   live_verified_at?: string | null;
+  variants?: ApiProductVariant[];
+  brand_domain?: string | null;
 }
 
 export interface ApiProductSearchResponse {
@@ -52,6 +75,7 @@ export interface SessionState {
   occasion: string | null;
   category: string | null;
   color_preference: string | null;
+  budget_min: number | null;
   budget_max: number | null;
   style_descriptors: string[];
   size: string | null;
@@ -98,14 +122,6 @@ export interface ApiCollection {
   sort_order: number;
 }
 
-export interface Collection {
-  id: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  image: string;
-}
-
 export interface Message {
   id: string;
   sender: 'user' | 'assistant';
@@ -123,7 +139,5 @@ export interface FilterChips {
   size?: string;
   age?: string;
 }
-
-export type Platform = 'desktop' | 'mobile';
 
 export type CurrentScreen = 'onboarding' | 'discovery' | 'chat' | 'detail';

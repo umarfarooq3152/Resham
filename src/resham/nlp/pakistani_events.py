@@ -115,12 +115,47 @@ EVENTS: tuple[EventProfile, ...] = (
     EventProfile("mourning", ("janaza", "funeral", "soyem", "chehlum", "condolence"),
                  ("shalwar kameez", "kurta", "abaya", "dupatta"),
                  ("white", "black", "grey", "navy"), ("plain", "modest", "traditional")),
-    EventProfile("office", ("office", "workwear", "job interview", "interview", "corporate event", "formal dinner"),
+    EventProfile("office", ("office", "workwear", "job interview", "interview", "corporate event", "formal dinner",
+                            "meeting", "business meeting", "client meeting", "business trip", "conference"),
                  ("suit", "shirt", "trouser", "kurta", "shalwar kameez", "blazer"),
                  ("black", "navy", "white", "beige", "grey"), ("formal", "minimal", "plain")),
     EventProfile("casual", ("casual", "daily wear", "everyday", "university", "college"),
                  ("shirt", "t shirt", "t-shirt", "kurta", "trouser", "jeans", "2 piece", "2-piece"),
                  (), ("casual", "printed", "plain", "comfortable")),
+    # University/college "theme days" — a real, common dress-up tradition
+    # around orientation week, farewells, and cultural weeks (see color day,
+    # sports day, orientation, farewell above). Only themes with a real
+    # catalog-mappable garment/color aesthetic are covered here; pure
+    # costume themes (superhero, cosplay) are deliberately excluded since
+    # this catalog stocks no such items and would just return nothing.
+    EventProfile("daaku day", ("daaku day", "daku day", "dacoit day", "dakait day", "badmaash day", "badmaash", "gangster day"),
+                 ("waistcoat", "kurta", "shalwar kameez", "shirt", "trouser", "jacket"),
+                 ("black", "brown", "khaki", "maroon", "olive"),
+                 ("rugged", "structured", "bold", "vintage", "distressed")),
+    EventProfile("black day", ("black day", "all black day", "black out day", "blackout day"),
+                 ("kurta", "shalwar kameez", "shirt", "trouser", "t shirt", "t-shirt", "jacket", "2 piece", "2-piece"),
+                 ("black",), ("plain", "minimal", "solid")),
+    EventProfile("white day", ("white day", "all white day", "white out day", "whiteout day"),
+                 ("kurta", "shalwar kameez", "shirt", "trouser", "t shirt", "t-shirt", "2 piece", "2-piece"),
+                 ("white", "ivory", "cream"), ("plain", "minimal", "solid")),
+    EventProfile("neon day", ("neon day", "glow day", "neon party"),
+                 ("t shirt", "t-shirt", "shirt", "dress", "kurta"),
+                 ("lime", "yellow", "pink", "green", "orange"), ("bright", "bold", "vibrant")),
+    EventProfile("pajama day", ("pajama day", "pyjama day", "pjs day", "comfy day"),
+                 ("kurta", "shalwar kameez", "shirt", "trouser", "2 piece", "2-piece"),
+                 (), ("comfortable", "casual", "printed", "plain")),
+    EventProfile("beach day", ("beach day", "hawaiian day", "tropical day"),
+                 ("shirt", "t shirt", "t-shirt", "shorts", "kurta"),
+                 (), ("printed", "floral", "casual", "summer")),
+    EventProfile("denim day", ("denim day", "jeans day"),
+                 ("jeans", "jacket", "shirt"),
+                 ("blue", "black"), ("denim", "casual")),
+    EventProfile("pathani day", ("pathani day", "peshawari day"),
+                 ("shalwar kameez", "waistcoat", "kurta"),
+                 (), ("traditional", "cultural wear", "embroidered")),
+    EventProfile("retro day", ("retro day", "vintage day", "throwback day"),
+                 ("kurta", "shalwar kameez", "shirt", "trouser", "dress", "jacket"),
+                 (), ("vintage", "printed", "bold")),
 )
 
 # Primary and secondary tags used by Pakistani e-commerce catalogs when they
@@ -154,6 +189,15 @@ EVENT_FORMALITY_TAGS: dict[str, tuple[str, ...]] = {
     "mourning": ("casual", "modest"),
     "office": ("semi formal", "formal"),
     "casual": ("casual", "daily wear"),
+    "daaku day": ("casual", "cultural wear"),
+    "black day": ("casual", "semi formal"),
+    "white day": ("casual", "semi formal"),
+    "neon day": ("casual", "party wear"),
+    "pajama day": ("casual",),
+    "beach day": ("casual",),
+    "denim day": ("casual",),
+    "pathani day": ("cultural wear", "casual"),
+    "retro day": ("casual", "party wear"),
 }
 
 _BY_NAME = {event.name: event for event in EVENTS}
@@ -163,15 +207,6 @@ _BY_NAME = {event.name: event for event in EVENTS}
 # colour and construction still make it suitable for a nikah. They therefore
 # must not trigger the cross-event contradiction rule below.
 _NON_EXCLUSIVE_CONTEXTS = {"casual", "office"}
-
-
-@lru_cache(maxsize=512)
-def _phrase_pattern(phrase: str) -> re.Pattern[str]:
-    return re.compile(rf"(?<![a-z0-9]){re.escape(phrase.lower())}(?![a-z0-9])")
-
-
-def _contains_phrase(text: str, phrase: str) -> bool:
-    return _phrase_pattern(phrase).search(text) is not None
 
 
 @lru_cache(maxsize=256)
@@ -199,10 +234,6 @@ def extract_event(text: str) -> str | None:
             if re.search(rf"\b{re.escape(normalized_alias)}\b", normalized):
                 matches.append((len(normalized_alias), event.name))
     return max(matches, default=(0, None))[1]
-
-
-def is_known_event(name: str | None) -> bool:
-    return bool(name and name.lower() in _BY_NAME)
 
 
 def event_garments(name: str | None) -> tuple[str, ...]:
